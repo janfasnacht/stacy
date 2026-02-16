@@ -16,6 +16,17 @@ irm https://raw.githubusercontent.com/janfasnacht/stacy/main/install.ps1 | iex
 
 Both install to `~/.local/bin/` (or equivalent). Ensure this directory is in your PATH.
 
+## From within Stata
+
+If you prefer not to leave Stata, you can install stacy directly from the Stata console:
+
+```stata
+net install stacy, from("https://raw.githubusercontent.com/janfasnacht/stacy/main/stata/")
+stacy_setup
+```
+
+This downloads the Stata wrappers and installs the stacy binary to `~/.local/bin/`. After setup, all stacy commands are available as native Stata commands (e.g., `stacy run analysis.do`, `stacy add estout`).
+
 ## Other Methods
 
 **Homebrew:**

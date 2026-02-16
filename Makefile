@@ -1,4 +1,4 @@
-# stacy - Modern Stata Workflow Tool
+# stacy - Reproducible Stata Workflow Tool
 # Common development tasks
 
 .PHONY: build test clean lint fmt check release help

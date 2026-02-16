@@ -1,5 +1,5 @@
 *! stacy_setup.ado - Download and install stacy binary
-*! Part of stacy: Modern Stata Workflow Tool
+*! Part of stacy: Reproducible Stata Workflow Tool
 *! Version: 0.1.0
 
 /*

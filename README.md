@@ -1,7 +1,7 @@
 <p align="center">
   <img src="assets/wordmark-dark.svg" alt="stacy" height="48">
   <br>
-  <em>A modern workflow tool for Stata</em>
+  <em>Reproducible Stata projects through lockfiles and exit codes</em>
 </p>
 
 <p align="center">
@@ -16,7 +16,23 @@
 
 ---
 
-**stacy** runs Stata scripts with proper exit codes, manages packages with lockfiles, and integrates Stata into reproducible pipelines.
+Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit.
+
+**The environment is implicit.** Packages install to a global path — no manifest, no lockfile, no isolation between projects. Each `ssc install` retrieves whatever version exists today; a collaborator installing later gets a different version entirely.
+
+**The outcome is implicit.** Batch mode (`stata-mp -b do script.do`) returns exit code 0 even when scripts fail. Build systems, CI pipelines, and coding agents cannot detect failure — they proceed as if nothing went wrong.
+
+**stacy** makes both explicit:
+
+```bash
+# Proper exit codes
+stacy run analysis.do
+echo $?  # 0 on success, 1-10 on error
+
+# Lockfile-based dependencies
+stacy add estout reghdfe    # Declares in stacy.toml, locks in stacy.lock
+stacy install               # Installs exact versions from lockfile
+```
 
 | If you know... | stacy is like... |
 |----------------|----------------|
@@ -24,26 +40,6 @@
 | Python | uv / Poetry |
 | JavaScript | npm |
 | R | renv |
-
-## The Problem
-
-Stata's batch mode always returns success, even when scripts fail:
-
-```bash
-stata-mp -b do analysis.do
-echo $?  # Always 0, even on error
-```
-
-This breaks Make, Snakemake, CI pipelines, and coding agents that depend on exit codes.
-
-## The Solution
-
-```bash
-stacy run analysis.do
-echo $?  # 0 on success, 1-10 on error
-```
-
-Now your builds stop on failure and your environments reproduce.
 
 ## Installation
 
@@ -53,6 +49,10 @@ curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh |
 
 # Homebrew
 brew install janfasnacht/stacy/stacy
+
+# From within Stata
+net install stacy, from("https://raw.githubusercontent.com/janfasnacht/stacy/main/stata/")
+stacy_setup
 
 # From source
 cargo install --git https://github.com/janfasnacht/stacy.git

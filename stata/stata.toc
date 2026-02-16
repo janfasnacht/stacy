@@ -1,11 +1,11 @@
 v 3
-d stacy - Modern Stata Workflow Tool
+d stacy - Reproducible Stata Workflow Tool
 d
 d Author: Jan Fasnacht
 d Support: https://github.com/janfasnacht/stacy
 d
-d stacy provides reproducible Stata execution with proper error detection,
-d dependency management, and modern build system integration.
+d stacy makes Stata projects reproducible through lockfiles and exit codes.
+d Dependencies get a manifest and lockfile; execution gets proper exit codes.
 d
 d Features:
 d   - Proper error detection and exit codes
@@ -17,4 +17,4 @@ d Requires: Stata 14.0 or higher
 d
 d Distribution-Date: 20260118
 d
-p stacy Modern Stata Workflow Tool
+p stacy Reproducible Stata Workflow Tool

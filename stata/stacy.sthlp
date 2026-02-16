@@ -9,7 +9,7 @@
 {title:Title}
 
 {phang}
-{bf:stacy} {hline 2} Modern Stata Workflow Tool
+{bf:stacy} {hline 2} Reproducible Stata Workflow Tool
 
 
 {marker syntax}{...}
@@ -23,7 +23,7 @@
 {title:Description}
 
 {pstd}
-{cmd:stacy} is a modern workflow tool for Stata that provides:
+{cmd:stacy} is a workflow tool for reproducible Stata projects that provides:
 
 {p 8 12 2}
 {bf:1.} Proper error detection and exit codes for build system integration{p_end}

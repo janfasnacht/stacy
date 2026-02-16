@@ -1,12 +1,12 @@
 # Introduction
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/janfasnacht/stacy/releases)
+[![Version](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/janfasnacht/stacy/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/janfasnacht/stacy/blob/main/LICENSE)
 [![GitHub](https://img.shields.io/badge/github-janfasnacht/stacy-black)](https://github.com/janfasnacht/stacy)
 
-**stacy** is a modern workflow tool for Stata. It runs scripts with proper exit codes, manages packages with lockfiles, and integrates Stata into reproducible pipelines.
+Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit: the environment — what packages the project needs — and the outcome — whether execution succeeded.
 
-For those familiar with other ecosystems:
+**stacy** makes both explicit. Dependencies get a manifest and lockfile; execution gets proper exit codes. With these primitives, Stata projects can be versioned, automated, and reproduced.
 
 | If you know... | stacy is like... | Key similarity |
 |----------------|----------------|----------------|
@@ -18,11 +18,9 @@ For those familiar with other ecosystems:
 
 ## The Problem
 
-Stata's defaults leave two critical things implicit:
+**The environment is implicit.** User-written packages install to a global path — no manifest, no lockfile, no isolation between projects. There is no way to declare dependencies and install from that declaration. Each `ssc install` retrieves whatever version exists at that moment; a collaborator installing later gets a different version entirely.
 
-**Dependencies are global and unversioned.** Packages install to a global path. Versions are whatever SSC has today. When a package updates, every project using it changes silently. A replication package that worked six months ago may fail today because `reghdfe` changed its defaults.
-
-**Execution always returns success.** Stata's batch mode (`stata-mp -b do script.do`) exits with code 0 even when scripts fail. Errors are buried in logs. Build systems, CI pipelines, and orchestration tools cannot detect failure--they proceed as if nothing went wrong.
+**The outcome is implicit.** Stata's batch mode (`stata-mp -b do script.do`) exits with code 0 even when scripts fail. Errors are buried in logs. Build systems, CI pipelines, and orchestration tools cannot detect failure — they proceed as if nothing went wrong.
 
 ## The Solution
 
@@ -38,46 +36,27 @@ stacy add estout reghdfe    # Adds to stacy.toml, creates stacy.lock
 stacy install               # Installs exact versions from lockfile
 ```
 
-Now your builds stop on errors and your environments reproduce:
+A project that declares its dependencies can be installed identically elsewhere. A project that signals failure can be automated reliably:
+
+- Journals can verify that replication packages run
+- Cluster jobs fail fast instead of silently producing garbage
+- Coding agents detect when their changes cause errors
+- Collaborators work from the same locked environment rather than debugging "it worked on my machine"
 
 ```makefile
 results/output.dta: analysis.do data/input.dta
     stacy run analysis.do   # Stops on failure
 ```
 
-## Before and After
+## At a Glance
 
 | Without stacy | With stacy |
 |-------------|----------|
 | `stata -b do script.do` returns 0 even on error | `stacy run script.do` returns 1-10 on error |
-| Packages are global, unversioned | `stacy.lock` pins exact versions |
+| Packages are global, unversioned | `stacy.lock` pins exact versions with SHA256 checksums |
 | Errors buried in log files | Errors displayed with documentation links |
 | "It worked on my machine" | Same versions everywhere via lockfile |
 | Manual `ssc install` in scripts | `stacy install` from lockfile |
-
-## Key Features
-
-| Feature | What it provides |
-|---------|------------------|
-| Proper exit codes | Maps 182 official Stata error codes to Unix exit codes |
-| Lockfile management | `stacy.lock` pins exact versions with SHA256 checksums |
-| Global package cache | Packages cached at `~/.cache/stacy/packages/`, shared across projects |
-| Build system integration | Works with Make, Snakemake, CI/CD |
-| Single binary | No runtime dependencies, easy to deploy |
-
-> **Note:** Error detection uses [182 official Stata error codes](https://www.stata.com/manuals/perror.pdf) from the Stata Programming Reference Manual--not heuristics.
-
-## Incremental Adoption
-
-Even minimal usage restores critical functionality:
-
-| Level | What you do | What you get | Who this is for |
-|-------|-------------|--------------|-----------------|
-| 1 | `stacy run script.do` | Exit codes work | Anyone using Make/CI |
-| 2 | `stacy init` | Project configuration | Teams wanting standards |
-| 3 | `stacy add pkg` | Locked dependencies | Reproducibility needs |
-| 4 | Add `[scripts]` | Task automation | Complex workflows |
-| 5 | Integrate with Make/CI | Full pipeline | Publication-ready research |
 
 ## Quick Example
 

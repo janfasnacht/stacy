@@ -1,5 +1,5 @@
 [book]
-title = "stacy - Modern Stata Workflow Tool"
+title = "stacy - Reproducible Stata Workflow Tool"
 authors = ["Jan Fasnacht"]
 language = "en"
 src = "src"

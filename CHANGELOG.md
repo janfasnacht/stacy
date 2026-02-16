@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-02-15
+
+### Fixed
+
+- Fix `net install` from Stata: remove 5 phantom files from `stacy.pkg` that caused r(601)
+
+### Changed
+
+- Align project description, README, and docs intro with paper framing
+- Add Stata installation instructions to README and docs
+
 ## [1.0.0] - 2026-02-15
 
 Initial public release.

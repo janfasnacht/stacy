@@ -1,4 +1,4 @@
-*! stacy.ado - Modern Stata Workflow Tool
+*! stacy.ado - Reproducible Stata Workflow Tool
 *! Version: 0.1.0
 *! Author: Jan Fasnacht
 *! URL: https://github.com/janfasnacht/stacy

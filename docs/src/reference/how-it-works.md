@@ -21,7 +21,7 @@ Stata's batch mode (`stata -b do script.do`) always exits with code 0, even when
 
 1. **Execute**: stacy runs Stata with `-b -q` flags
 2. **Parse**: After Stata exits, stacy parses the log file
-3. **Detect**: Matches against 182 official error patterns
+3. **Detect**: Matches against Stata's official `r()` error codes
 4. **Report**: Returns appropriate exit code (1-10)
 
 ```
@@ -48,7 +48,7 @@ file myfile.dta not found
 
 ### Official Stata Error Codes
 
-stacy includes all 182 error codes from the [Stata Programming Reference Manual](https://www.stata.com/manuals/perror.pdf):
+stacy extracts error codes from your Stata installation at runtime (`stacy doctor` triggers this). It falls back to range-based categories from the [Stata Programming Reference Manual](https://www.stata.com/manuals/perror.pdf):
 
 | Range | Category | Examples |
 |-------|----------|----------|

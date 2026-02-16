@@ -13,7 +13,7 @@
 [meta]
 version = "0.1.0"
 stata_minimum = "14.0"
-description = "Modern Stata Workflow Tool"
+description = "Reproducible Stata Workflow Tool"
 
 # =============================================================================
 # SCHEMA DOCUMENTATION

@@ -1,5 +1,5 @@
 class Stacy < Formula
-  desc "Modern Stata workflow tool for reproducible research"
+  desc "Reproducible Stata projects through lockfiles and exit codes"
   homepage "https://github.com/janfasnacht/stacy"
   version "0.1.0"
   license "MIT"

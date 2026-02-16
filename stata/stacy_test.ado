@@ -1,5 +1,5 @@
 *! stacy_test.ado - Run tests
-*! Part of stacy: Modern Stata Workflow Tool
+*! Part of stacy: Reproducible Stata Workflow Tool
 *! Version: 0.1.0
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen

@@ -175,7 +175,7 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<Strin
         "*! {}.ado - {}\n",
         command.stata_command, command.description
     ));
-    out.push_str("*! Part of stacy: Modern Stata Workflow Tool\n");
+    out.push_str("*! Part of stacy: Reproducible Stata Workflow Tool\n");
     out.push_str("*! Version: 0.1.0\n");
     out.push_str("*! AUTO-GENERATED - DO NOT EDIT\n");
     out.push_str("*! Regenerate with: cargo xtask codegen\n\n");
@@ -544,7 +544,7 @@ fn generate_sthlp(name: &str, command: &Command, _schema: &Schema) -> Result<Str
 fn generate_main_ado(schema: &Schema) -> Result<String> {
     let mut out = String::new();
 
-    out.push_str("*! stacy.ado - Modern Stata Workflow Tool\n");
+    out.push_str("*! stacy.ado - Reproducible Stata Workflow Tool\n");
     out.push_str("*! Version: 0.1.0\n");
     out.push_str("*! Author: Jan Fasnacht\n");
     out.push_str("*! URL: https://github.com/janfasnacht/stacy\n");
@@ -651,7 +651,9 @@ fn generate_main_sthlp(schema: &Schema) -> Result<String> {
     out.push_str("{marker description}{...}\n");
     out.push_str("{title:Description}\n\n");
     out.push_str("{pstd}\n");
-    out.push_str("{cmd:stacy} is a modern workflow tool for Stata that provides:\n\n");
+    out.push_str(
+        "{cmd:stacy} is a workflow tool for reproducible Stata projects that provides:\n\n",
+    );
     out.push_str("{p 8 12 2}\n");
     out.push_str(
         "{bf:1.} Proper error detection and exit codes for build system integration{p_end}\n",
