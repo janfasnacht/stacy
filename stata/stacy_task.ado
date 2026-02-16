@@ -1,6 +1,6 @@
 *! stacy_task.ado - Run tasks from stacy.toml
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -8,7 +8,7 @@
     Run tasks from stacy.toml
 
     Syntax:
-        stacy_task <task> [, options]
+        stacy_task [task] [, options]
 
     Options:
         FROZEN               - Fail if lockfile doesn't match stacy.toml
@@ -28,7 +28,7 @@
 
 program define stacy_task, rclass
     version 14.0
-    syntax anything(name=task) [, FROZEN LIST]
+    syntax [anything(name=task)] [, FROZEN LIST]
 
     * Build command arguments
     local cmd "task"
@@ -50,47 +50,47 @@ program define stacy_task, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_duration_secs
+    capture confirm scalar stacy_duration_secs
     if _rc == 0 {
-        return scalar duration_secs = scalar(_stacy_json_duration_secs)
+        return scalar duration_secs = scalar(stacy_duration_secs)
     }
 
-    capture confirm scalar _stacy_json_exit_code
+    capture confirm scalar stacy_exit_code
     if _rc == 0 {
-        return scalar exit_code = scalar(_stacy_json_exit_code)
+        return scalar exit_code = scalar(stacy_exit_code)
     }
 
-    capture confirm scalar _stacy_json_failed_count
+    capture confirm scalar stacy_failed_count
     if _rc == 0 {
-        return scalar failed_count = scalar(_stacy_json_failed_count)
+        return scalar failed_count = scalar(stacy_failed_count)
     }
 
-    capture confirm scalar _stacy_json_script_count
+    capture confirm scalar stacy_script_count
     if _rc == 0 {
-        return scalar script_count = scalar(_stacy_json_script_count)
+        return scalar script_count = scalar(stacy_script_count)
     }
 
-    capture confirm scalar _stacy_json_success
+    capture confirm scalar stacy_success
     if _rc == 0 {
-        return scalar success = scalar(_stacy_json_success)
+        return scalar success = scalar(stacy_success)
     }
 
-    capture confirm scalar _stacy_json_success_count
+    capture confirm scalar stacy_success_count
     if _rc == 0 {
-        return scalar success_count = scalar(_stacy_json_success_count)
+        return scalar success_count = scalar(stacy_success_count)
     }
 
-    capture confirm scalar _stacy_json_task_count
+    capture confirm scalar stacy_task_count
     if _rc == 0 {
-        return scalar task_count = scalar(_stacy_json_task_count)
+        return scalar task_count = scalar(stacy_task_count)
     }
 
-    if `"`_stacy_json_task_name'"' != "" {
-        return local task_name `"`_stacy_json_task_name'"'
+    if `"${stacy_task_name}"' != "" {
+        return local task_name `"${stacy_task_name}"'
     }
 
-    if `"`_stacy_json_task_names'"' != "" {
-        return local task_names `"`_stacy_json_task_names'"'
+    if `"${stacy_task_names}"' != "" {
+        return local task_names `"${stacy_task_names}"'
     }
 
     * Return failure if command failed

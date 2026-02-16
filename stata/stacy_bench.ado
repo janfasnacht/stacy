@@ -1,6 +1,6 @@
 *! stacy_bench.ado - Benchmark script execution
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -30,7 +30,7 @@
 
 program define stacy_bench, rclass
     version 14.0
-    syntax anything(name=script) [, NOWarmup Quiet Runs(integer) Warmup(integer)]
+    syntax anything(name=script) [, NOWarmup Quiet Runs(string) Warmup(string)]
 
     * Build command arguments
     local cmd "bench"
@@ -45,8 +45,8 @@ program define stacy_bench, rclass
         local cmd `"`cmd' "`script'""'
     }
 
-    if "`no_warmup'" != "" {
-        local cmd `"`cmd' --no_warmup"'
+    if "`nowarmup'" != "" {
+        local cmd `"`cmd' --no-warmup"'
     }
 
     if "`quiet'" != "" {
@@ -66,48 +66,48 @@ program define stacy_bench, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_max_secs
+    capture confirm scalar stacy_max_secs
     if _rc == 0 {
-        return scalar max_secs = scalar(_stacy_json_max_secs)
+        return scalar max_secs = scalar(stacy_max_secs)
     }
 
-    capture confirm scalar _stacy_json_mean_secs
+    capture confirm scalar stacy_mean_secs
     if _rc == 0 {
-        return scalar mean_secs = scalar(_stacy_json_mean_secs)
+        return scalar mean_secs = scalar(stacy_mean_secs)
     }
 
-    capture confirm scalar _stacy_json_measured_runs
+    capture confirm scalar stacy_measured_runs
     if _rc == 0 {
-        return scalar measured_runs = scalar(_stacy_json_measured_runs)
+        return scalar measured_runs = scalar(stacy_measured_runs)
     }
 
-    capture confirm scalar _stacy_json_median_secs
+    capture confirm scalar stacy_median_secs
     if _rc == 0 {
-        return scalar median_secs = scalar(_stacy_json_median_secs)
+        return scalar median_secs = scalar(stacy_median_secs)
     }
 
-    capture confirm scalar _stacy_json_min_secs
+    capture confirm scalar stacy_min_secs
     if _rc == 0 {
-        return scalar min_secs = scalar(_stacy_json_min_secs)
+        return scalar min_secs = scalar(stacy_min_secs)
     }
 
-    capture confirm scalar _stacy_json_stddev_secs
+    capture confirm scalar stacy_stddev_secs
     if _rc == 0 {
-        return scalar stddev_secs = scalar(_stacy_json_stddev_secs)
+        return scalar stddev_secs = scalar(stacy_stddev_secs)
     }
 
-    capture confirm scalar _stacy_json_success
+    capture confirm scalar stacy_success
     if _rc == 0 {
-        return scalar success = scalar(_stacy_json_success)
+        return scalar success = scalar(stacy_success)
     }
 
-    capture confirm scalar _stacy_json_warmup_runs
+    capture confirm scalar stacy_warmup_runs
     if _rc == 0 {
-        return scalar warmup_runs = scalar(_stacy_json_warmup_runs)
+        return scalar warmup_runs = scalar(stacy_warmup_runs)
     }
 
-    if `"`_stacy_json_script'"' != "" {
-        return local script `"`_stacy_json_script'"'
+    if `"${stacy_script}"' != "" {
+        return local script `"${stacy_script}"'
     }
 
     * Return failure if command failed

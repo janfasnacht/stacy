@@ -1,6 +1,6 @@
 *! stacy_explain.ado - Look up Stata error code details
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -40,25 +40,25 @@ program define stacy_explain, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_code
+    capture confirm scalar stacy_code
     if _rc == 0 {
-        return scalar code = scalar(_stacy_json_code)
+        return scalar code = scalar(stacy_code)
     }
 
-    if `"`_stacy_json_category'"' != "" {
-        return local category `"`_stacy_json_category'"'
+    if `"${stacy_category}"' != "" {
+        return local category `"${stacy_category}"'
     }
 
-    if `"`_stacy_json_description'"' != "" {
-        return local description `"`_stacy_json_description'"'
+    if `"${stacy_description}"' != "" {
+        return local description `"${stacy_description}"'
     }
 
-    if `"`_stacy_json_name'"' != "" {
-        return local name `"`_stacy_json_name'"'
+    if `"${stacy_name}"' != "" {
+        return local name `"${stacy_name}"'
     }
 
-    if `"`_stacy_json_url'"' != "" {
-        return local url `"`_stacy_json_url'"'
+    if `"${stacy_url}"' != "" {
+        return local url `"${stacy_url}"'
     }
 
     * Return failure if command failed

@@ -1,6 +1,6 @@
 *! stacy_update.ado - Update packages to latest versions
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -8,7 +8,7 @@
     Update packages to latest versions
 
     Syntax:
-        stacy_update <packages> [, options]
+        stacy_update [packages] [, options]
 
     Options:
         DRYrun               - Show what would be updated without making changes
@@ -24,7 +24,7 @@
 
 program define stacy_update, rclass
     version 14.0
-    syntax anything(name=packages) [, DRYrun]
+    syntax [anything(name=packages)] [, DRYrun]
 
     * Build command arguments
     local cmd "update"
@@ -33,8 +33,8 @@ program define stacy_update, rclass
         local cmd `"`cmd' "`packages'""'
     }
 
-    if "`dry_run'" != "" {
-        local cmd `"`cmd' --dry_run"'
+    if "`dryrun'" != "" {
+        local cmd `"`cmd' --dry-run"'
     }
 
     * Execute via _stacy_exec
@@ -42,33 +42,33 @@ program define stacy_update, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_dry_run
+    capture confirm scalar stacy_dry_run
     if _rc == 0 {
-        return scalar dry_run = scalar(_stacy_json_dry_run)
+        return scalar dry_run = scalar(stacy_dry_run)
     }
 
-    capture confirm scalar _stacy_json_failed
+    capture confirm scalar stacy_failed
     if _rc == 0 {
-        return scalar failed = scalar(_stacy_json_failed)
+        return scalar failed = scalar(stacy_failed)
     }
 
-    capture confirm scalar _stacy_json_total
+    capture confirm scalar stacy_total
     if _rc == 0 {
-        return scalar total = scalar(_stacy_json_total)
+        return scalar total = scalar(stacy_total)
     }
 
-    capture confirm scalar _stacy_json_updated
+    capture confirm scalar stacy_updated
     if _rc == 0 {
-        return scalar updated = scalar(_stacy_json_updated)
+        return scalar updated = scalar(stacy_updated)
     }
 
-    capture confirm scalar _stacy_json_updates_available
+    capture confirm scalar stacy_updates_available
     if _rc == 0 {
-        return scalar updates_available = scalar(_stacy_json_updates_available)
+        return scalar updates_available = scalar(stacy_updates_available)
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

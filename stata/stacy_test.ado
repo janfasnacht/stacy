@@ -1,6 +1,6 @@
 *! stacy_test.ado - Run tests
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -8,7 +8,7 @@
     Run tests
 
     Syntax:
-        stacy_test <test> [, options]
+        stacy_test [test] [, options]
 
     Options:
         Filter(string)       - Filter tests by pattern
@@ -29,7 +29,7 @@
 
 program define stacy_test, rclass
     version 14.0
-    syntax anything(name=test) [, Filter(string) LIST PARALLEL Quiet Verbose]
+    syntax [anything(name=test)] [, Filter(string) LIST PARALLEL Quiet Verbose]
 
     * Build command arguments
     local cmd "test"
@@ -63,38 +63,38 @@ program define stacy_test, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_duration_secs
+    capture confirm scalar stacy_duration_secs
     if _rc == 0 {
-        return scalar duration_secs = scalar(_stacy_json_duration_secs)
+        return scalar duration_secs = scalar(stacy_duration_secs)
     }
 
-    capture confirm scalar _stacy_json_failed
+    capture confirm scalar stacy_failed
     if _rc == 0 {
-        return scalar failed = scalar(_stacy_json_failed)
+        return scalar failed = scalar(stacy_failed)
     }
 
-    capture confirm scalar _stacy_json_passed
+    capture confirm scalar stacy_passed
     if _rc == 0 {
-        return scalar passed = scalar(_stacy_json_passed)
+        return scalar passed = scalar(stacy_passed)
     }
 
-    capture confirm scalar _stacy_json_skipped
+    capture confirm scalar stacy_skipped
     if _rc == 0 {
-        return scalar skipped = scalar(_stacy_json_skipped)
+        return scalar skipped = scalar(stacy_skipped)
     }
 
-    capture confirm scalar _stacy_json_success
+    capture confirm scalar stacy_success
     if _rc == 0 {
-        return scalar success = scalar(_stacy_json_success)
+        return scalar success = scalar(stacy_success)
     }
 
-    capture confirm scalar _stacy_json_test_count
+    capture confirm scalar stacy_test_count
     if _rc == 0 {
-        return scalar test_count = scalar(_stacy_json_test_count)
+        return scalar test_count = scalar(stacy_test_count)
     }
 
-    if `"`_stacy_json_test_names'"' != "" {
-        return local test_names `"`_stacy_json_test_names'"'
+    if `"${stacy_test_names}"' != "" {
+        return local test_names `"${stacy_test_names}"'
     }
 
     * Return failure if command failed

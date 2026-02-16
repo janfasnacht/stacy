@@ -1,6 +1,6 @@
 *! stacy_setup.ado - Download and install stacy binary
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 
 /*
     Download and install the stacy binary from GitHub releases.
@@ -25,7 +25,7 @@
         stacy_setup
 
         * Install specific version
-        stacy_setup, version("v0.1.0")
+        stacy_setup, version("v1.0.1")
 
         * Install to custom location
         stacy_setup, path("/usr/local/bin")
@@ -83,10 +83,12 @@ program define stacy_setup, rclass
     local arch ""
     local ext ""
 
-    if "`c(os)'" == "MacOSX" {
+    * Detect platform. Note: c(os) returns "Unix" on macOS in batch mode,
+    * so we use c(machine_type) which reliably contains "Mac" on macOS.
+    local mtype "`c(machine_type)'"
+    if strpos("`mtype'", "Mac") > 0 {
         local platform "apple-darwin"
-        * Check architecture
-        if "`c(machine_type)'" == "arm64" | "`c(processor)'" == "arm" {
+        if strpos("`mtype'", "Apple Silicon") > 0 {
             local arch "aarch64"
         }
         else {
@@ -94,24 +96,24 @@ program define stacy_setup, rclass
         }
         local ext ""
     }
-    else if "`c(os)'" == "Unix" {
-        local platform "unknown-linux-gnu"
-        local arch "x86_64"
-        local ext ""
-    }
     else if "`c(os)'" == "Windows" {
         local platform "pc-windows-msvc"
         local arch "x86_64"
         local ext ".exe"
     }
+    else if "`c(os)'" == "Unix" {
+        local platform "unknown-linux-gnu"
+        local arch "x86_64"
+        local ext ""
+    }
     else {
-        di as error "Unsupported operating system: `c(os)'"
+        di as error "Unsupported operating system: `c(os)' / `mtype'"
         exit 198
     }
 
     * Determine version
     if "`version'" == "" {
-        local version "v0.1.0"
+        local version "v1.0.1"
     }
 
     * Construct download URL
@@ -129,7 +131,7 @@ program define stacy_setup, rclass
         di as text "stacy Setup"
         di as text "==========="
         di as text ""
-        di as text "Platform: `c(os)' (`arch')"
+        di as text "Platform: `mtype' (`arch'-`platform')"
         di as text "Version:  `version'"
         di as text "Target:   `path'"
         di as text ""

@@ -323,8 +323,8 @@ fn execute_packages_path(args: &PackagesPathArgs) -> Result<()> {
         }
         OutputFormat::Stata => {
             println!(
-                "local _stacy_cache_path `\"{}\"`",
-                cache_path.display().to_string().replace('`', "'")
+                "global stacy_cache_path \"{}\"",
+                cache_path.display().to_string().replace('"', "'")
             );
         }
     }
@@ -377,16 +377,16 @@ fn execute_packages_list(args: &PackagesListArgs) -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&output).unwrap());
         }
         OutputFormat::Stata => {
-            println!("scalar _stacy_package_count = {}", packages.len());
+            println!("scalar stacy_package_count = {}", packages.len());
             let names: Vec<_> = packages.iter().map(|(n, _, _)| n.as_str()).collect();
             let versions: Vec<_> = packages.iter().map(|(_, v, _)| v.as_str()).collect();
             println!(
-                "local _stacy_package_names `\"{}\"`",
-                names.join(",").replace('`', "'")
+                "global stacy_package_names \"{}\"",
+                names.join(",").replace('"', "'")
             );
             println!(
-                "local _stacy_package_versions `\"{}\"`",
-                versions.join(",").replace('`', "'")
+                "global stacy_package_versions \"{}\"",
+                versions.join(",").replace('"', "'")
             );
         }
     }
@@ -418,8 +418,8 @@ fn execute_packages_clean(args: &PackagesCleanArgs) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&output).unwrap());
             }
             OutputFormat::Stata => {
-                println!("local _stacy_status `\"success\"`");
-                println!("scalar _stacy_removed = {}", removed);
+                println!("global stacy_status \"success\"");
+                println!("scalar stacy_removed = {}", removed);
             }
         }
     } else {
@@ -440,7 +440,7 @@ fn execute_packages_clean(args: &PackagesCleanArgs) -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&output).unwrap());
             }
             OutputFormat::Stata => {
-                println!("local _stacy_status `\"info\"`");
+                println!("global stacy_status \"info\"");
             }
         }
     }

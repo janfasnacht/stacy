@@ -22,7 +22,7 @@ If you prefer not to leave Stata, you can install stacy directly from the Stata 
 
 ```stata
 net install stacy, from("https://raw.githubusercontent.com/janfasnacht/stacy/main/stata/")
-stacy_setup
+stacy setup
 ```
 
 This downloads the Stata wrappers and installs the stacy binary to `~/.local/bin/`. After setup, all stacy commands are available as native Stata commands (e.g., `stacy run analysis.do`, `stacy add estout`).
@@ -89,7 +89,7 @@ cargo install ... --force     # Cargo
 stacy checks for new releases on startup and prints a notification to stderr if one is available:
 
 ```
-Update available: v0.1.0 → v0.2.0
+Update available: v1.0.0 → v1.0.1
 Run `brew upgrade stacy` to update
 ```
 

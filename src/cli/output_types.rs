@@ -458,7 +458,7 @@ impl CommandOutput for EnvOutput {
                 &root.display().to_string(),
             ));
         } else {
-            lines.push("local _stacy_project_root".to_string());
+            lines.push("global stacy_project_root".to_string());
         }
 
         if let Some(ref binary) = self.stata_binary {
@@ -467,7 +467,7 @@ impl CommandOutput for EnvOutput {
                 &binary.display().to_string(),
             ));
         } else {
-            lines.push("local _stacy_stata_binary".to_string());
+            lines.push("global stacy_stata_binary".to_string());
         }
 
         lines.join("\n")
@@ -1134,11 +1134,11 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("scalar _stacy_success = 1"));
-        assert!(stata.contains("scalar _stacy_exit_code = 0"));
-        assert!(stata.contains("scalar _stacy_duration_secs = 1.500000"));
-        assert!(stata.contains("local _stacy_source `\"file\"'"));
-        assert!(stata.contains("local _stacy_script `\"/path/to/script.do\"'"));
+        assert!(stata.contains("scalar stacy_success = 1"));
+        assert!(stata.contains("scalar stacy_exit_code = 0"));
+        assert!(stata.contains("scalar stacy_duration_secs = 1.500000"));
+        assert!(stata.contains("global stacy_source \"file\""));
+        assert!(stata.contains("global stacy_script \"/path/to/script.do\""));
     }
 
     #[test]
@@ -1169,11 +1169,11 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("scalar _stacy_ready = 1"));
-        assert!(stata.contains("scalar _stacy_passed = 5"));
-        assert!(stata.contains("scalar _stacy_warnings = 1"));
-        assert!(stata.contains("scalar _stacy_failed = 0"));
-        assert!(stata.contains("scalar _stacy_check_count = 6"));
+        assert!(stata.contains("scalar stacy_ready = 1"));
+        assert!(stata.contains("scalar stacy_passed = 5"));
+        assert!(stata.contains("scalar stacy_warnings = 1"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(stata.contains("scalar stacy_check_count = 6"));
     }
 
     #[test]
@@ -1190,10 +1190,10 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("scalar _stacy_has_config = 1"));
-        assert!(stata.contains("local _stacy_cache_dir"));
-        assert!(stata.contains("local _stacy_project_root `\"/project\"'"));
-        assert!(stata.contains("local _stacy_stata_binary `\"/usr/local/bin/stata\"'"));
+        assert!(stata.contains("scalar stacy_has_config = 1"));
+        assert!(stata.contains("global stacy_cache_dir"));
+        assert!(stata.contains("global stacy_project_root \"/project\""));
+        assert!(stata.contains("global stacy_stata_binary \"/usr/local/bin/stata\""));
     }
 
     #[test]
@@ -1210,10 +1210,10 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("scalar _stacy_has_config = 0"));
-        assert!(stata.contains("local _stacy_cache_dir"));
-        assert!(stata.contains("local _stacy_project_root"));
-        assert!(stata.contains("local _stacy_stata_binary"));
+        assert!(stata.contains("scalar stacy_has_config = 0"));
+        assert!(stata.contains("global stacy_cache_dir"));
+        assert!(stata.contains("global stacy_project_root"));
+        assert!(stata.contains("global stacy_stata_binary"));
     }
 
     #[test]
@@ -1226,8 +1226,8 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("local _stacy_status `\"success\"'"));
-        assert!(stata.contains("scalar _stacy_created_count = 2"));
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_created_count = 2"));
     }
 
     #[test]
@@ -1242,10 +1242,10 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("local _stacy_status `\"success\"'"));
-        assert!(stata.contains("scalar _stacy_installed = 3"));
-        assert!(stata.contains("scalar _stacy_already_installed = 2"));
-        assert!(stata.contains("scalar _stacy_skipped = 1"));
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_installed = 3"));
+        assert!(stata.contains("scalar stacy_already_installed = 2"));
+        assert!(stata.contains("scalar stacy_skipped = 1"));
     }
 
     #[test]
@@ -1260,11 +1260,11 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("local _stacy_script `\"/path/to/main.do\"'"));
-        assert!(stata.contains("scalar _stacy_unique_count = 5"));
-        assert!(stata.contains("scalar _stacy_has_circular = 0"));
-        assert!(stata.contains("scalar _stacy_has_missing = 1"));
-        assert!(stata.contains("scalar _stacy_missing_count = 2"));
+        assert!(stata.contains("global stacy_script \"/path/to/main.do\""));
+        assert!(stata.contains("scalar stacy_unique_count = 5"));
+        assert!(stata.contains("scalar stacy_has_circular = 0"));
+        assert!(stata.contains("scalar stacy_has_missing = 1"));
+        assert!(stata.contains("scalar stacy_missing_count = 2"));
     }
 
     #[test]
@@ -1280,7 +1280,7 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("local _stacy_script `\"/path/with spaces/script.do\"'"));
+        assert!(stata.contains("global stacy_script \"/path/with spaces/script.do\""));
     }
 
     // =========================================================================
@@ -1303,13 +1303,13 @@ mod tests {
 
         let stata = output.to_stata();
         assert!(stata.contains("* stacy run --parallel output"));
-        assert!(stata.contains("scalar _stacy_success = 1"));
-        assert!(stata.contains("scalar _stacy_exit_code = 0"));
-        assert!(stata.contains("scalar _stacy_parallel = 1"));
-        assert!(stata.contains("scalar _stacy_jobs = 4"));
-        assert!(stata.contains("scalar _stacy_passed = 3"));
-        assert!(stata.contains("scalar _stacy_failed = 0"));
-        assert!(stata.contains("scalar _stacy_total = 3"));
+        assert!(stata.contains("scalar stacy_success = 1"));
+        assert!(stata.contains("scalar stacy_exit_code = 0"));
+        assert!(stata.contains("scalar stacy_parallel = 1"));
+        assert!(stata.contains("scalar stacy_jobs = 4"));
+        assert!(stata.contains("scalar stacy_passed = 3"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(stata.contains("scalar stacy_total = 3"));
     }
 
     #[test]
@@ -1327,10 +1327,10 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("scalar _stacy_success = 0"));
-        assert!(stata.contains("scalar _stacy_exit_code = 2"));
-        assert!(stata.contains("scalar _stacy_passed = 1"));
-        assert!(stata.contains("scalar _stacy_failed = 2"));
+        assert!(stata.contains("scalar stacy_success = 0"));
+        assert!(stata.contains("scalar stacy_exit_code = 2"));
+        assert!(stata.contains("scalar stacy_passed = 1"));
+        assert!(stata.contains("scalar stacy_failed = 2"));
     }
 
     #[test]
@@ -1348,8 +1348,8 @@ mod tests {
         };
 
         let stata = output.to_stata();
-        assert!(stata.contains("scalar _stacy_parallel = 0"));
-        assert!(stata.contains("scalar _stacy_jobs = 1"));
+        assert!(stata.contains("scalar stacy_parallel = 0"));
+        assert!(stata.contains("scalar stacy_jobs = 1"));
     }
 
     #[test]
@@ -1454,5 +1454,720 @@ mod tests {
 
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"error_message\":\"error occurred\""));
+    }
+
+    // =========================================================================
+    // BenchOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_bench_output_to_stata() {
+        let output = BenchOutput {
+            script: PathBuf::from("/path/to/bench.do"),
+            measured_runs: 10,
+            warmup_runs: 3,
+            mean_secs: 1.234,
+            median_secs: 1.200,
+            min_secs: 0.900,
+            max_secs: 1.800,
+            stddev_secs: 0.150,
+            success: true,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_script \"/path/to/bench.do\""));
+        assert!(stata.contains("scalar stacy_measured_runs = 10"));
+        assert!(stata.contains("scalar stacy_warmup_runs = 3"));
+        assert!(stata.contains("scalar stacy_mean_secs = 1.234000"));
+        assert!(stata.contains("scalar stacy_median_secs = 1.200000"));
+        assert!(stata.contains("scalar stacy_min_secs = 0.900000"));
+        assert!(stata.contains("scalar stacy_max_secs = 1.800000"));
+        assert!(stata.contains("scalar stacy_stddev_secs = 0.150000"));
+        assert!(stata.contains("scalar stacy_success = 1"));
+    }
+
+    // =========================================================================
+    // CacheCleanOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_cache_clean_output_to_stata() {
+        let output = CacheCleanOutput {
+            entries_removed: 5,
+            entries_remaining: 10,
+            status: "success".to_string(),
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_entries_removed = 5"));
+        assert!(stata.contains("scalar stacy_entries_remaining = 10"));
+    }
+
+    // =========================================================================
+    // CacheInfoOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_cache_info_output_to_stata() {
+        let output = CacheInfoOutput {
+            entry_count: 42,
+            size_bytes: 1048576,
+            cache_path: PathBuf::from("/home/user/.cache/stacy"),
+            cache_exists: true,
+            oldest_age_secs: Some(86400),
+            newest_age_secs: Some(3600),
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_entry_count = 42"));
+        assert!(stata.contains("scalar stacy_size_bytes = 1048576"));
+        assert!(stata.contains("global stacy_cache_path \"/home/user/.cache/stacy\""));
+        assert!(stata.contains("scalar stacy_cache_exists = 1"));
+        assert!(stata.contains("scalar stacy_oldest_age_secs = 86400"));
+        assert!(stata.contains("scalar stacy_newest_age_secs = 3600"));
+    }
+
+    #[test]
+    fn test_cache_info_output_to_stata_without_optionals() {
+        let output = CacheInfoOutput {
+            entry_count: 0,
+            size_bytes: 0,
+            cache_path: PathBuf::from("/tmp/cache"),
+            cache_exists: false,
+            oldest_age_secs: None,
+            newest_age_secs: None,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_cache_exists = 0"));
+        assert!(!stata.contains("oldest_age_secs"));
+        assert!(!stata.contains("newest_age_secs"));
+    }
+
+    // =========================================================================
+    // CacheHitOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_cache_hit_output_to_stata() {
+        let output = CacheHitOutput {
+            success: true,
+            exit_code: 0,
+            duration_secs: 0.5,
+            error_count: 0,
+            source: "cache".to_string(),
+            script: PathBuf::from("/path/to/cached.do"),
+            cached_at: std::time::UNIX_EPOCH,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_success = 1"));
+        assert!(stata.contains("scalar stacy_exit_code = 0"));
+        assert!(stata.contains("scalar stacy_duration_secs = 0.500000"));
+        assert!(stata.contains("scalar stacy_error_count = 0"));
+        assert!(stata.contains("global stacy_source \"cache\""));
+        assert!(stata.contains("global stacy_script \"/path/to/cached.do\""));
+        assert!(stata.contains("scalar stacy_cache_hit = 1"));
+    }
+
+    // =========================================================================
+    // ExplainOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_explain_output_to_stata() {
+        let output = ExplainOutput {
+            code: 198,
+            name: "syntax error".to_string(),
+            category: "Syntax".to_string(),
+            description: "The command is not recognized.".to_string(),
+            url: "https://www.stata.com/help.cgi?r(198)".to_string(),
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_code = 198"));
+        assert!(stata.contains("global stacy_name \"syntax error\""));
+        assert!(stata.contains("global stacy_category \"Syntax\""));
+        assert!(stata.contains("global stacy_description \"The command is not recognized.\""));
+        assert!(stata.contains("global stacy_url \"https://www.stata.com/help.cgi?r(198)\""));
+    }
+
+    // =========================================================================
+    // AddOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_add_output_to_stata() {
+        let output = AddOutput {
+            added: 2,
+            group: "production".to_string(),
+            failed: 0,
+            skipped: 1,
+            status: "success".to_string(),
+            total: 3,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_added = 2"));
+        assert!(stata.contains("scalar stacy_skipped = 1"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(stata.contains("scalar stacy_total = 3"));
+        assert!(stata.contains("global stacy_group \"production\""));
+    }
+
+    // =========================================================================
+    // RemoveOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_remove_output_to_stata() {
+        let output = RemoveOutput {
+            removed: 2,
+            not_found: 1,
+            status: "success".to_string(),
+            total: 3,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_removed = 2"));
+        assert!(stata.contains("scalar stacy_not_found = 1"));
+        assert!(stata.contains("scalar stacy_total = 3"));
+    }
+
+    // =========================================================================
+    // UpdateOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_update_output_to_stata() {
+        let output = UpdateOutput {
+            dry_run: true,
+            failed: 0,
+            status: "success".to_string(),
+            total: 5,
+            updates_available: 2,
+            updated: 0,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_updated = 0"));
+        assert!(stata.contains("scalar stacy_updates_available = 2"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(stata.contains("scalar stacy_total = 5"));
+        assert!(stata.contains("scalar stacy_dry_run = 1"));
+    }
+
+    // =========================================================================
+    // TaskOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_task_output_to_stata() {
+        let output = TaskOutput {
+            task_name: "build".to_string(),
+            success: true,
+            exit_code: 0,
+            duration_secs: 2.5,
+            script_count: 3,
+            success_count: 3,
+            failed_count: 0,
+            scripts: vec![],
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_task_name \"build\""));
+        assert!(stata.contains("scalar stacy_success = 1"));
+        assert!(stata.contains("scalar stacy_exit_code = 0"));
+        assert!(stata.contains("scalar stacy_duration_secs = 2.500000"));
+        assert!(stata.contains("scalar stacy_script_count = 3"));
+        assert!(stata.contains("scalar stacy_success_count = 3"));
+        assert!(stata.contains("scalar stacy_failed_count = 0"));
+    }
+
+    // =========================================================================
+    // TaskListOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_task_list_output_to_stata() {
+        let output = TaskListOutput {
+            task_count: 2,
+            tasks: vec![
+                TaskInfo {
+                    name: "build".to_string(),
+                    description: "Build the project".to_string(),
+                },
+                TaskInfo {
+                    name: "test".to_string(),
+                    description: "Run tests".to_string(),
+                },
+            ],
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_task_count = 2"));
+        assert!(stata.contains("global stacy_task_names \"build,test\""));
+    }
+
+    // =========================================================================
+    // ListOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_list_output_to_stata() {
+        let output = ListOutput {
+            status: "success".to_string(),
+            package_count: 2,
+            packages: vec![
+                ListPackageInfo {
+                    name: "estout".to_string(),
+                    version: "3.31".to_string(),
+                    source: "ssc".to_string(),
+                    group: "production".to_string(),
+                },
+                ListPackageInfo {
+                    name: "reghdfe".to_string(),
+                    version: "6.0".to_string(),
+                    source: "github:sergiocorreia/reghdfe".to_string(),
+                    group: "production".to_string(),
+                },
+            ],
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_package_count = 2"));
+        assert!(stata.contains("global stacy_package_names \"estout,reghdfe\""));
+        assert!(stata.contains("global stacy_package_versions \"3.31,6.0\""));
+        assert!(stata.contains("global stacy_package_sources \"ssc,github:sergiocorreia/reghdfe\""));
+        assert!(stata.contains("global stacy_package_groups \"production,production\""));
+    }
+
+    // =========================================================================
+    // OutdatedOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_outdated_output_to_stata() {
+        let output = OutdatedOutput {
+            status: "success".to_string(),
+            outdated_count: 1,
+            total_count: 3,
+            packages: vec![OutdatedPackageInfo {
+                name: "estout".to_string(),
+                current: "3.30".to_string(),
+                latest: "3.31".to_string(),
+                source: "ssc".to_string(),
+            }],
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_outdated_count = 1"));
+        assert!(stata.contains("scalar stacy_total_count = 3"));
+        assert!(stata.contains("global stacy_outdated_names \"estout\""));
+        assert!(stata.contains("global stacy_outdated_currents \"3.30\""));
+        assert!(stata.contains("global stacy_outdated_latests \"3.31\""));
+    }
+
+    // =========================================================================
+    // LockOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_lock_output_to_stata() {
+        let output = LockOutput {
+            status: "success".to_string(),
+            package_count: 5,
+            updated: false,
+            in_sync: true,
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"success\""));
+        assert!(stata.contains("scalar stacy_package_count = 5"));
+        assert!(stata.contains("scalar stacy_updated = 0"));
+        assert!(stata.contains("scalar stacy_in_sync = 1"));
+    }
+
+    // =========================================================================
+    // TestOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_test_output_to_stata() {
+        let output = TestOutput {
+            test_count: 10,
+            passed: 8,
+            failed: 1,
+            skipped: 1,
+            duration_secs: 5.5,
+            success: false,
+            tests: vec![],
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_success = 0"));
+        assert!(stata.contains("scalar stacy_test_count = 10"));
+        assert!(stata.contains("scalar stacy_passed = 8"));
+        assert!(stata.contains("scalar stacy_failed = 1"));
+        assert!(stata.contains("scalar stacy_skipped = 1"));
+        assert!(stata.contains("scalar stacy_duration_secs = 5.500000"));
+    }
+
+    // =========================================================================
+    // TestListOutput tests
+    // =========================================================================
+
+    #[test]
+    fn test_test_list_output_to_stata() {
+        let output = TestListOutput {
+            test_count: 2,
+            tests: vec![
+                TestInfo {
+                    name: "test_basic".to_string(),
+                    path: PathBuf::from("tests/test_basic.do"),
+                },
+                TestInfo {
+                    name: "test_advanced".to_string(),
+                    path: PathBuf::from("tests/test_advanced.do"),
+                },
+            ],
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("scalar stacy_test_count = 2"));
+        assert!(stata.contains("global stacy_test_names \"test_basic,test_advanced\""));
+    }
+
+    // =========================================================================
+    // Cross-cutting Stata syntax invariant tests
+    // =========================================================================
+
+    /// Helper: construct every output type and return their to_stata() results.
+    fn all_output_stata_strings() -> Vec<(&'static str, String)> {
+        vec![
+            (
+                "RunOutput",
+                RunOutput {
+                    success: true,
+                    exit_code: 0,
+                    duration_secs: 1.0,
+                    error_count: 0,
+                    source: "file".to_string(),
+                    script: PathBuf::from("test.do"),
+                    log_file: PathBuf::from("test.log"),
+                }
+                .to_stata(),
+            ),
+            (
+                "ParallelRunOutput",
+                ParallelRunOutput {
+                    success: true,
+                    exit_code: 0,
+                    duration_secs: 1.0,
+                    parallel: true,
+                    jobs: 2,
+                    passed: 2,
+                    failed: 0,
+                    total: 2,
+                    scripts: vec![],
+                }
+                .to_stata(),
+            ),
+            (
+                "BenchOutput",
+                BenchOutput {
+                    script: PathBuf::from("bench.do"),
+                    measured_runs: 5,
+                    warmup_runs: 2,
+                    mean_secs: 1.0,
+                    median_secs: 1.0,
+                    min_secs: 0.5,
+                    max_secs: 1.5,
+                    stddev_secs: 0.1,
+                    success: true,
+                }
+                .to_stata(),
+            ),
+            (
+                "CacheCleanOutput",
+                CacheCleanOutput {
+                    entries_removed: 3,
+                    entries_remaining: 7,
+                    status: "success".to_string(),
+                }
+                .to_stata(),
+            ),
+            (
+                "CacheInfoOutput",
+                CacheInfoOutput {
+                    entry_count: 10,
+                    size_bytes: 1024,
+                    cache_path: PathBuf::from("/tmp/cache"),
+                    cache_exists: true,
+                    oldest_age_secs: Some(100),
+                    newest_age_secs: Some(10),
+                }
+                .to_stata(),
+            ),
+            (
+                "CacheHitOutput",
+                CacheHitOutput {
+                    success: true,
+                    exit_code: 0,
+                    duration_secs: 0.1,
+                    error_count: 0,
+                    source: "cache".to_string(),
+                    script: PathBuf::from("test.do"),
+                    cached_at: std::time::UNIX_EPOCH,
+                }
+                .to_stata(),
+            ),
+            (
+                "DoctorOutput",
+                DoctorOutput {
+                    ready: true,
+                    passed: 5,
+                    warnings: 0,
+                    failed: 0,
+                    check_count: 5,
+                }
+                .to_stata(),
+            ),
+            (
+                "EnvOutput",
+                EnvOutput {
+                    has_config: true,
+                    show_progress: false,
+                    adopath_count: 3,
+                    cache_dir: PathBuf::from("/tmp/cache"),
+                    log_dir: PathBuf::from("logs"),
+                    project_root: Some(PathBuf::from("/project")),
+                    stata_binary: Some(PathBuf::from("/usr/bin/stata")),
+                    stata_source: "config".to_string(),
+                }
+                .to_stata(),
+            ),
+            (
+                "ExplainOutput",
+                ExplainOutput {
+                    code: 100,
+                    name: "not allowed".to_string(),
+                    category: "General".to_string(),
+                    description: "Explanation text".to_string(),
+                    url: "https://stata.com/r100".to_string(),
+                }
+                .to_stata(),
+            ),
+            (
+                "InitOutput",
+                InitOutput {
+                    status: "success".to_string(),
+                    path: PathBuf::from("/project"),
+                    created_count: 2,
+                    package_count: 0,
+                }
+                .to_stata(),
+            ),
+            (
+                "InstallOutput",
+                InstallOutput {
+                    status: "success".to_string(),
+                    installed: 3,
+                    already_installed: 1,
+                    skipped: 0,
+                    total: 4,
+                    package_count: 4,
+                }
+                .to_stata(),
+            ),
+            (
+                "AddOutput",
+                AddOutput {
+                    added: 1,
+                    group: "production".to_string(),
+                    failed: 0,
+                    skipped: 0,
+                    status: "success".to_string(),
+                    total: 1,
+                }
+                .to_stata(),
+            ),
+            (
+                "RemoveOutput",
+                RemoveOutput {
+                    removed: 1,
+                    not_found: 0,
+                    status: "success".to_string(),
+                    total: 1,
+                }
+                .to_stata(),
+            ),
+            (
+                "UpdateOutput",
+                UpdateOutput {
+                    dry_run: false,
+                    failed: 0,
+                    status: "success".to_string(),
+                    total: 2,
+                    updates_available: 1,
+                    updated: 1,
+                }
+                .to_stata(),
+            ),
+            (
+                "DepsOutput",
+                DepsOutput {
+                    script: PathBuf::from("main.do"),
+                    unique_count: 3,
+                    has_circular: false,
+                    has_missing: false,
+                    circular_count: 0,
+                    missing_count: 0,
+                }
+                .to_stata(),
+            ),
+            (
+                "TaskOutput",
+                TaskOutput {
+                    task_name: "build".to_string(),
+                    success: true,
+                    exit_code: 0,
+                    duration_secs: 1.0,
+                    script_count: 1,
+                    success_count: 1,
+                    failed_count: 0,
+                    scripts: vec![],
+                }
+                .to_stata(),
+            ),
+            (
+                "TaskListOutput",
+                TaskListOutput {
+                    task_count: 1,
+                    tasks: vec![TaskInfo {
+                        name: "build".to_string(),
+                        description: "Build".to_string(),
+                    }],
+                }
+                .to_stata(),
+            ),
+            (
+                "ListOutput",
+                ListOutput {
+                    status: "success".to_string(),
+                    package_count: 0,
+                    packages: vec![],
+                }
+                .to_stata(),
+            ),
+            (
+                "OutdatedOutput",
+                OutdatedOutput {
+                    status: "success".to_string(),
+                    outdated_count: 0,
+                    total_count: 0,
+                    packages: vec![],
+                }
+                .to_stata(),
+            ),
+            (
+                "LockOutput",
+                LockOutput {
+                    status: "success".to_string(),
+                    package_count: 0,
+                    updated: false,
+                    in_sync: true,
+                }
+                .to_stata(),
+            ),
+            (
+                "TestOutput",
+                TestOutput {
+                    test_count: 0,
+                    passed: 0,
+                    failed: 0,
+                    skipped: 0,
+                    duration_secs: 0.0,
+                    success: true,
+                    tests: vec![],
+                }
+                .to_stata(),
+            ),
+            (
+                "TestListOutput",
+                TestListOutput {
+                    test_count: 0,
+                    tests: vec![],
+                }
+                .to_stata(),
+            ),
+        ]
+    }
+
+    #[test]
+    fn test_all_outputs_use_stacy_prefix() {
+        for (name, stata) in all_output_stata_strings() {
+            for line in stata.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('*') {
+                    continue;
+                }
+                assert!(
+                    line.starts_with("scalar stacy_") || line.starts_with("global stacy_"),
+                    "{}: line should start with 'scalar stacy_' or 'global stacy_', got: {}",
+                    name,
+                    line
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_all_outputs_globals_use_double_quotes() {
+        for (name, stata) in all_output_stata_strings() {
+            for line in stata.lines() {
+                if line.starts_with("global stacy_") {
+                    // Must NOT contain compound quote pattern: `"..."'
+                    assert!(
+                        !line.contains("`\""),
+                        "{}: global line uses compound quotes (backtick-double-quote), \
+                         should use plain double quotes: {}",
+                        name,
+                        line
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_all_outputs_scalars_have_numeric_values() {
+        for (name, stata) in all_output_stata_strings() {
+            for line in stata.lines() {
+                if line.starts_with("scalar stacy_") {
+                    if let Some(eq_pos) = line.find('=') {
+                        let value = line[eq_pos + 1..].trim();
+                        assert!(
+                            value.parse::<f64>().is_ok(),
+                            "{}: scalar value should be numeric, got '{}' in: {}",
+                            name,
+                            value,
+                            line
+                        );
+                    } else {
+                        panic!(
+                            "{}: scalar line missing '=' assignment: {}",
+                            name, line
+                        );
+                    }
+                }
+            }
+        }
     }
 }

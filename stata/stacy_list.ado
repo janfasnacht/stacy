@@ -1,6 +1,6 @@
 *! stacy_list.ado - List installed packages
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -38,29 +38,29 @@ program define stacy_list, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_package_count
+    capture confirm scalar stacy_package_count
     if _rc == 0 {
-        return scalar package_count = scalar(_stacy_json_package_count)
+        return scalar package_count = scalar(stacy_package_count)
     }
 
-    if `"`_stacy_json_package_groups'"' != "" {
-        return local package_groups `"`_stacy_json_package_groups'"'
+    if `"${stacy_package_groups}"' != "" {
+        return local package_groups `"${stacy_package_groups}"'
     }
 
-    if `"`_stacy_json_package_names'"' != "" {
-        return local package_names `"`_stacy_json_package_names'"'
+    if `"${stacy_package_names}"' != "" {
+        return local package_names `"${stacy_package_names}"'
     }
 
-    if `"`_stacy_json_package_sources'"' != "" {
-        return local package_sources `"`_stacy_json_package_sources'"'
+    if `"${stacy_package_sources}"' != "" {
+        return local package_sources `"${stacy_package_sources}"'
     }
 
-    if `"`_stacy_json_package_versions'"' != "" {
-        return local package_versions `"`_stacy_json_package_versions'"'
+    if `"${stacy_package_versions}"' != "" {
+        return local package_versions `"${stacy_package_versions}"'
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

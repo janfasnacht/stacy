@@ -1,6 +1,6 @@
 *! stacy_remove.ado - Remove packages from project
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -39,23 +39,23 @@ program define stacy_remove, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_not_found
+    capture confirm scalar stacy_not_found
     if _rc == 0 {
-        return scalar not_found = scalar(_stacy_json_not_found)
+        return scalar not_found = scalar(stacy_not_found)
     }
 
-    capture confirm scalar _stacy_json_removed
+    capture confirm scalar stacy_removed
     if _rc == 0 {
-        return scalar removed = scalar(_stacy_json_removed)
+        return scalar removed = scalar(stacy_removed)
     }
 
-    capture confirm scalar _stacy_json_total
+    capture confirm scalar stacy_total
     if _rc == 0 {
-        return scalar total = scalar(_stacy_json_total)
+        return scalar total = scalar(stacy_total)
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

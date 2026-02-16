@@ -65,7 +65,7 @@ impl SscDownloader {
     pub fn new() -> Self {
         let client = Client::builder()
             .timeout(REQUEST_TIMEOUT)
-            .user_agent("stacy/0.1.0")
+            .user_agent(concat!("stacy/", env!("CARGO_PKG_VERSION")))
             .build()
             .expect("Failed to create HTTP client");
 

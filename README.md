@@ -52,7 +52,7 @@ brew install janfasnacht/stacy/stacy
 
 # From within Stata
 net install stacy, from("https://raw.githubusercontent.com/janfasnacht/stacy/main/stata/")
-stacy_setup
+stacy setup
 
 # From source
 cargo install --git https://github.com/janfasnacht/stacy.git

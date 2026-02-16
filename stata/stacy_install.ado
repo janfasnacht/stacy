@@ -1,6 +1,6 @@
 *! stacy_install.ado - Install packages from lockfile or SSC/GitHub
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -8,7 +8,7 @@
     Install packages from lockfile or SSC/GitHub
 
     Syntax:
-        stacy_install <package> [, options]
+        stacy_install [package] [, options]
 
     Options:
         From(string)         - Source: ssc or github:user/repo
@@ -24,7 +24,7 @@
 
 program define stacy_install, rclass
     version 14.0
-    syntax anything(name=package) [, From(string)]
+    syntax [anything(name=package)] [, From(string)]
 
     * Build command arguments
     local cmd "install"
@@ -42,33 +42,33 @@ program define stacy_install, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_already_installed
+    capture confirm scalar stacy_already_installed
     if _rc == 0 {
-        return scalar already_installed = scalar(_stacy_json_already_installed)
+        return scalar already_installed = scalar(stacy_already_installed)
     }
 
-    capture confirm scalar _stacy_json_installed
+    capture confirm scalar stacy_installed
     if _rc == 0 {
-        return scalar installed = scalar(_stacy_json_installed)
+        return scalar installed = scalar(stacy_installed)
     }
 
-    capture confirm scalar _stacy_json_package_count
+    capture confirm scalar stacy_package_count
     if _rc == 0 {
-        return scalar package_count = scalar(_stacy_json_package_count)
+        return scalar package_count = scalar(stacy_package_count)
     }
 
-    capture confirm scalar _stacy_json_skipped
+    capture confirm scalar stacy_skipped
     if _rc == 0 {
-        return scalar skipped = scalar(_stacy_json_skipped)
+        return scalar skipped = scalar(stacy_skipped)
     }
 
-    capture confirm scalar _stacy_json_total
+    capture confirm scalar stacy_total
     if _rc == 0 {
-        return scalar total = scalar(_stacy_json_total)
+        return scalar total = scalar(stacy_total)
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

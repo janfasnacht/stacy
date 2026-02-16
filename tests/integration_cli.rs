@@ -29,7 +29,7 @@ fn test_version() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("1.0.0"));
+        .stdout(predicate::str::contains("1.0.1"));
 }
 
 #[test]
@@ -2901,7 +2901,7 @@ fn test_cache_packages_list_stata_format() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("scalar _stacy_package_count"));
+        .stdout(predicate::str::contains("scalar stacy_package_count"));
 }
 
 #[test]

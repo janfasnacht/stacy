@@ -1,6 +1,6 @@
 *! stacy_deps.ado - Show dependency tree for Stata scripts
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -48,33 +48,33 @@ program define stacy_deps, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_circular_count
+    capture confirm scalar stacy_circular_count
     if _rc == 0 {
-        return scalar circular_count = scalar(_stacy_json_circular_count)
+        return scalar circular_count = scalar(stacy_circular_count)
     }
 
-    capture confirm scalar _stacy_json_has_circular
+    capture confirm scalar stacy_has_circular
     if _rc == 0 {
-        return scalar has_circular = scalar(_stacy_json_has_circular)
+        return scalar has_circular = scalar(stacy_has_circular)
     }
 
-    capture confirm scalar _stacy_json_has_missing
+    capture confirm scalar stacy_has_missing
     if _rc == 0 {
-        return scalar has_missing = scalar(_stacy_json_has_missing)
+        return scalar has_missing = scalar(stacy_has_missing)
     }
 
-    capture confirm scalar _stacy_json_missing_count
+    capture confirm scalar stacy_missing_count
     if _rc == 0 {
-        return scalar missing_count = scalar(_stacy_json_missing_count)
+        return scalar missing_count = scalar(stacy_missing_count)
     }
 
-    capture confirm scalar _stacy_json_unique_count
+    capture confirm scalar stacy_unique_count
     if _rc == 0 {
-        return scalar unique_count = scalar(_stacy_json_unique_count)
+        return scalar unique_count = scalar(stacy_unique_count)
     }
 
-    if `"`_stacy_json_script'"' != "" {
-        return local script `"`_stacy_json_script'"'
+    if `"${stacy_script}"' != "" {
+        return local script `"${stacy_script}"'
     }
 
     * Return failure if command failed

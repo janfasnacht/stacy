@@ -1,6 +1,6 @@
 *! stacy_init.ado - Initialize new stacy project
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -8,11 +8,10 @@
     Initialize new stacy project
 
     Syntax:
-        stacy_init <path> [, options]
+        stacy_init [path] [, options]
 
     Options:
         Force                - Overwrite existing files
-        Name(string)         - Project name
 
     Returns:
         r(created_count       ) - Number of files/directories created (scalar)
@@ -23,7 +22,7 @@
 
 program define stacy_init, rclass
     version 14.0
-    syntax anything(name=path) [, Force Name(string)]
+    syntax [anything(name=path)] [, Force]
 
     * Build command arguments
     local cmd "init"
@@ -36,31 +35,27 @@ program define stacy_init, rclass
         local cmd `"`cmd' --force"'
     }
 
-    if `"`name'"' != "" {
-        local cmd `"`cmd' --name "`name'""'
-    }
-
     * Execute via _stacy_exec
     _stacy_exec `cmd'
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_created_count
+    capture confirm scalar stacy_created_count
     if _rc == 0 {
-        return scalar created_count = scalar(_stacy_json_created_count)
+        return scalar created_count = scalar(stacy_created_count)
     }
 
-    capture confirm scalar _stacy_json_package_count
+    capture confirm scalar stacy_package_count
     if _rc == 0 {
-        return scalar package_count = scalar(_stacy_json_package_count)
+        return scalar package_count = scalar(stacy_package_count)
     }
 
-    if `"`_stacy_json_path'"' != "" {
-        return local path `"`_stacy_json_path'"'
+    if `"${stacy_path}"' != "" {
+        return local path `"${stacy_path}"'
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

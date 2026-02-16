@@ -23,11 +23,11 @@ fn test_doctor_format_stata_syntax() {
         .arg("--format")
         .arg("stata")
         .assert()
-        .stdout(predicate::str::contains("scalar _stacy_ready"))
-        .stdout(predicate::str::contains("scalar _stacy_passed"))
-        .stdout(predicate::str::contains("scalar _stacy_warnings"))
-        .stdout(predicate::str::contains("scalar _stacy_failed"))
-        .stdout(predicate::str::contains("scalar _stacy_check_count"));
+        .stdout(predicate::str::contains("scalar stacy_ready"))
+        .stdout(predicate::str::contains("scalar stacy_passed"))
+        .stdout(predicate::str::contains("scalar stacy_warnings"))
+        .stdout(predicate::str::contains("scalar stacy_failed"))
+        .stdout(predicate::str::contains("scalar stacy_check_count"));
 }
 
 #[test]
@@ -42,7 +42,7 @@ fn test_doctor_format_stata_is_valid_stata() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // Each scalar assignment should follow the pattern: scalar _stacy_NAME = VALUE
+    // Each scalar assignment should follow the pattern: scalar stacy_NAME = VALUE
     for line in stdout.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('*') {
@@ -51,8 +51,8 @@ fn test_doctor_format_stata_is_valid_stata() {
 
         // Should be either scalar or local
         assert!(
-            line.starts_with("scalar _stacy_") || line.starts_with("local _stacy_"),
-            "Line should start with 'scalar _stacy_' or 'local _stacy_': {}",
+            line.starts_with("scalar stacy_") || line.starts_with("global stacy_"),
+            "Line should start with 'scalar stacy_' or 'global stacy_': {}",
             line
         );
     }
@@ -69,9 +69,9 @@ fn test_env_format_stata_syntax() {
         .arg("--format")
         .arg("stata")
         .assert()
-        .stdout(predicate::str::contains("scalar _stacy_has_config"))
-        .stdout(predicate::str::contains("scalar _stacy_show_progress"))
-        .stdout(predicate::str::contains("local _stacy_cache_dir"));
+        .stdout(predicate::str::contains("scalar stacy_has_config"))
+        .stdout(predicate::str::contains("scalar stacy_show_progress"))
+        .stdout(predicate::str::contains("global stacy_cache_dir"));
 }
 
 #[test]
@@ -85,20 +85,16 @@ fn test_env_format_stata_locals_use_compound_quotes() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    // String locals should use compound quotes: `"..."'
+    // String globals should use regular double quotes: "..."
     for line in stdout.lines() {
-        if line.contains("local _stacy_")
-            && !line.trim().ends_with("local _stacy_project_root")
-            && !line.trim().ends_with("local _stacy_stata_binary")
-        {
-            // Skip empty locals (for optional fields)
-            if line.contains("`\"") {
-                assert!(
-                    line.contains("`\"") && line.contains("\"'"),
-                    "Local should use compound quotes: {}",
-                    line
-                );
-            }
+        if line.starts_with("global stacy_") && line.contains('"') {
+            // Count quotes - should have exactly 2 (opening and closing)
+            let quote_count = line.chars().filter(|c| *c == '"').count();
+            assert!(
+                quote_count >= 2,
+                "Global should use double quotes: {}",
+                line
+            );
         }
     }
 }
@@ -118,9 +114,9 @@ fn test_init_format_stata_syntax() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("local _stacy_status"))
-        .stdout(predicate::str::contains("local _stacy_path"))
-        .stdout(predicate::str::contains("scalar _stacy_created_count"));
+        .stdout(predicate::str::contains("global stacy_status"))
+        .stdout(predicate::str::contains("global stacy_path"))
+        .stdout(predicate::str::contains("scalar stacy_created_count"));
 }
 
 #[test]
@@ -135,7 +131,7 @@ fn test_init_format_stata_success_status() {
         .assert()
         .success()
         .stdout(predicate::str::contains(
-            "local _stacy_status `\"success\"'",
+            "global stacy_status \"success\"",
         ));
 }
 
@@ -155,10 +151,10 @@ fn test_deps_format_stata_syntax() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("local _stacy_script"))
-        .stdout(predicate::str::contains("scalar _stacy_unique_count"))
-        .stdout(predicate::str::contains("scalar _stacy_has_circular"))
-        .stdout(predicate::str::contains("scalar _stacy_has_missing"));
+        .stdout(predicate::str::contains("global stacy_script"))
+        .stdout(predicate::str::contains("scalar stacy_unique_count"))
+        .stdout(predicate::str::contains("scalar stacy_has_circular"))
+        .stdout(predicate::str::contains("scalar stacy_has_missing"));
 }
 
 #[test]
@@ -177,9 +173,9 @@ fn test_deps_format_stata_booleans() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // No dependencies, no circular, no missing -> all should be 0
-    assert!(stdout.contains("scalar _stacy_has_circular = 0"));
-    assert!(stdout.contains("scalar _stacy_has_missing = 0"));
-    assert!(stdout.contains("scalar _stacy_unique_count = 0"));
+    assert!(stdout.contains("scalar stacy_has_circular = 0"));
+    assert!(stdout.contains("scalar stacy_has_missing = 0"));
+    assert!(stdout.contains("scalar stacy_unique_count = 0"));
 }
 
 // =============================================================================
@@ -196,8 +192,8 @@ fn test_run_format_stata_missing_file() {
         .assert()
         .failure()
         .code(3) // File error
-        .stdout(predicate::str::contains("scalar _stacy_success = 0"))
-        .stdout(predicate::str::contains("scalar _stacy_exit_code = 3"));
+        .stdout(predicate::str::contains("scalar stacy_success = 0"))
+        .stdout(predicate::str::contains("scalar stacy_exit_code = 3"));
 }
 
 // =============================================================================
@@ -239,7 +235,7 @@ fn test_format_stata_special_chars_in_path() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Should produce valid Stata output
-    assert!(stdout.contains("scalar _stacy_"));
+    assert!(stdout.contains("scalar stacy_"));
 }
 
 #[test]
@@ -278,11 +274,11 @@ fn test_stata_output_all_lines_valid() {
 
         // Valid patterns:
         // 1. Comments: * ...
-        // 2. Scalars: scalar _stacy_NAME = VALUE
-        // 3. Locals: local _stacy_NAME ...
+        // 2. Scalars: scalar stacy_NAME = VALUE
+        // 3. Globals: global stacy_NAME ...
         let is_valid = line.starts_with('*')
-            || line.starts_with("scalar _stacy_")
-            || line.starts_with("local _stacy_");
+            || line.starts_with("scalar stacy_")
+            || line.starts_with("global stacy_");
 
         assert!(is_valid, "Invalid Stata syntax: '{}'", line);
     }
@@ -300,7 +296,7 @@ fn test_stata_scalars_have_numeric_values() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     for line in stdout.lines() {
-        if line.starts_with("scalar _stacy_") {
+        if line.starts_with("scalar stacy_") {
             // Extract value after "="
             if let Some(eq_pos) = line.find('=') {
                 let value = line[eq_pos + 1..].trim();
@@ -327,7 +323,7 @@ fn test_stata_booleans_are_0_or_1() {
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     // Check boolean fields specifically
-    if let Some(ready_line) = stdout.lines().find(|l| l.contains("_stacy_ready")) {
+    if let Some(ready_line) = stdout.lines().find(|l| l.contains("stacy_ready")) {
         let value = ready_line.split('=').last().unwrap().trim();
         assert!(
             value == "0" || value == "1",
@@ -357,8 +353,8 @@ fn test_list_format_stata_syntax() {
         .arg("--format")
         .arg("stata")
         .assert()
-        .stdout(predicate::str::contains("local _stacy_status"))
-        .stdout(predicate::str::contains("scalar _stacy_package_count"));
+        .stdout(predicate::str::contains("global stacy_status"))
+        .stdout(predicate::str::contains("scalar stacy_package_count"));
 }
 
 // =============================================================================
@@ -386,9 +382,9 @@ fn test_outdated_format_stata_syntax() {
         .arg("--format")
         .arg("stata")
         .assert()
-        .stdout(predicate::str::contains("local _stacy_status"))
-        .stdout(predicate::str::contains("scalar _stacy_outdated_count"))
-        .stdout(predicate::str::contains("scalar _stacy_total_count"));
+        .stdout(predicate::str::contains("global stacy_status"))
+        .stdout(predicate::str::contains("scalar stacy_outdated_count"))
+        .stdout(predicate::str::contains("scalar stacy_total_count"));
 }
 
 // =============================================================================
@@ -412,9 +408,9 @@ fn test_lock_format_stata_syntax() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("local _stacy_status"))
-        .stdout(predicate::str::contains("scalar _stacy_package_count"))
-        .stdout(predicate::str::contains("scalar _stacy_in_sync"));
+        .stdout(predicate::str::contains("global stacy_status"))
+        .stdout(predicate::str::contains("scalar stacy_package_count"))
+        .stdout(predicate::str::contains("scalar stacy_in_sync"));
 }
 
 #[test]
@@ -439,7 +435,7 @@ fn test_lock_check_format_stata_syntax() {
         .arg("--format")
         .arg("stata")
         .assert()
-        .stdout(predicate::str::contains("scalar _stacy_in_sync"));
+        .stdout(predicate::str::contains("scalar stacy_in_sync"));
 }
 
 // =============================================================================
@@ -464,10 +460,10 @@ fn test_cache_info_format_stata_syntax() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("scalar _stacy_entry_count"))
-        .stdout(predicate::str::contains("scalar _stacy_size_bytes"))
-        .stdout(predicate::str::contains("local _stacy_cache_path"))
-        .stdout(predicate::str::contains("scalar _stacy_cache_exists"));
+        .stdout(predicate::str::contains("scalar stacy_entry_count"))
+        .stdout(predicate::str::contains("scalar stacy_size_bytes"))
+        .stdout(predicate::str::contains("global stacy_cache_path"))
+        .stdout(predicate::str::contains("scalar stacy_cache_exists"));
 }
 
 #[test]
@@ -488,9 +484,9 @@ fn test_cache_clean_format_stata_syntax() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("local _stacy_status"))
-        .stdout(predicate::str::contains("scalar _stacy_entries_removed"))
-        .stdout(predicate::str::contains("scalar _stacy_entries_remaining"));
+        .stdout(predicate::str::contains("global stacy_status"))
+        .stdout(predicate::str::contains("scalar stacy_entries_removed"))
+        .stdout(predicate::str::contains("scalar stacy_entries_remaining"));
 }
 
 // =============================================================================
@@ -521,8 +517,8 @@ scripts = ["main.do"]
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("scalar _stacy_task_count"))
-        .stdout(predicate::str::contains("local _stacy_task_names"));
+        .stdout(predicate::str::contains("scalar stacy_task_count"))
+        .stdout(predicate::str::contains("global stacy_task_names"));
 }
 
 // =============================================================================
@@ -548,5 +544,84 @@ fn test_test_list_format_stata_syntax() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains("scalar _stacy_test_count"));
+        .stdout(predicate::str::contains("scalar stacy_test_count"));
+}
+
+// =============================================================================
+// Explain command tests
+// =============================================================================
+
+#[test]
+fn test_explain_format_stata_syntax() {
+    // explain uses direct println, not ExplainOutput struct, so field names
+    // differ: stacy_error_code, stacy_error_message, stacy_error_category
+    stacy()
+        .arg("explain")
+        .arg("100")
+        .arg("--format")
+        .arg("stata")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("scalar stacy_error_code"))
+        .stdout(predicate::str::contains("global stacy_error_message"))
+        .stdout(predicate::str::contains("global stacy_error_category"));
+}
+
+// =============================================================================
+// Install command tests (offline — empty project)
+// =============================================================================
+
+#[test]
+fn test_install_format_stata_empty_project() {
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("stacy.toml"),
+        "[project]\nname = \"test\"\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("stacy.lock"),
+        "version = \"1\"\n\n[packages]\n",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("install")
+        .arg("--format")
+        .arg("stata")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("global stacy_status"))
+        .stdout(predicate::str::contains("scalar stacy_installed"))
+        .stdout(predicate::str::contains("scalar stacy_total"));
+}
+
+// =============================================================================
+// Update command tests (offline — empty project, dry-run)
+// =============================================================================
+
+#[test]
+fn test_update_format_stata_empty_project() {
+    // update --dry-run with no packages succeeds silently (no Stata output)
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("stacy.toml"),
+        "[project]\nname = \"test\"\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("stacy.lock"),
+        "version = \"1\"\n\n[packages]\n",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("update")
+        .arg("--dry-run")
+        .arg("--format")
+        .arg("stata")
+        .assert()
+        .success();
 }

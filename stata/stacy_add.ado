@@ -1,6 +1,6 @@
 *! stacy_add.ado - Add packages to project
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -58,32 +58,32 @@ program define stacy_add, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_added
+    capture confirm scalar stacy_added
     if _rc == 0 {
-        return scalar added = scalar(_stacy_json_added)
+        return scalar added = scalar(stacy_added)
     }
 
-    capture confirm scalar _stacy_json_failed
+    capture confirm scalar stacy_failed
     if _rc == 0 {
-        return scalar failed = scalar(_stacy_json_failed)
+        return scalar failed = scalar(stacy_failed)
     }
 
-    capture confirm scalar _stacy_json_skipped
+    capture confirm scalar stacy_skipped
     if _rc == 0 {
-        return scalar skipped = scalar(_stacy_json_skipped)
+        return scalar skipped = scalar(stacy_skipped)
     }
 
-    capture confirm scalar _stacy_json_total
+    capture confirm scalar stacy_total
     if _rc == 0 {
-        return scalar total = scalar(_stacy_json_total)
+        return scalar total = scalar(stacy_total)
     }
 
-    if `"`_stacy_json_group'"' != "" {
-        return local group `"`_stacy_json_group'"'
+    if `"${stacy_group}"' != "" {
+        return local group `"${stacy_group}"'
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

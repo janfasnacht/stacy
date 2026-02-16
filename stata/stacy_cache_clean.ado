@@ -1,6 +1,6 @@
 *! stacy_cache_clean.ado - Remove cached entries
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -22,13 +22,13 @@
 
 program define stacy_cache_clean, rclass
     version 14.0
-    syntax [, OLDERthan(integer) Quiet]
+    syntax [, OLDERthan(string) Quiet]
 
     * Build command arguments
-    local cmd "cache_clean"
+    local cmd "cache clean"
 
-    if `"`older_than'"' != "" {
-        local cmd `"`cmd' --older_than "`older_than'""'
+    if `"`olderthan'"' != "" {
+        local cmd `"`cmd' --older-than "`olderthan'""'
     }
 
     if "`quiet'" != "" {
@@ -40,18 +40,18 @@ program define stacy_cache_clean, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_entries_remaining
+    capture confirm scalar stacy_entries_remaining
     if _rc == 0 {
-        return scalar entries_remaining = scalar(_stacy_json_entries_remaining)
+        return scalar entries_remaining = scalar(stacy_entries_remaining)
     }
 
-    capture confirm scalar _stacy_json_entries_removed
+    capture confirm scalar stacy_entries_removed
     if _rc == 0 {
-        return scalar entries_removed = scalar(_stacy_json_entries_removed)
+        return scalar entries_removed = scalar(stacy_entries_removed)
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

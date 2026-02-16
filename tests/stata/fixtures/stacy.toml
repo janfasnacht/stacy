@@ -11,6 +11,6 @@ show_progress = false
 ado_dir = "ado"
 
 # Define a simple task for testing stacy_task
-[tasks.test-task]
+[scripts.test-task]
 description = "A simple test task"
 scripts = ["scripts/hello.do"]

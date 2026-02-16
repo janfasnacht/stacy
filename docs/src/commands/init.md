@@ -26,7 +26,6 @@ Run this in an existing directory or specify a path to create a new one.
 | Option | Description |
 |--------|-------------|
 | `--force` | Overwrite existing files |
-| `--name` | Project name |
 | `--yes` | Skip interactive prompts (always set in Stata) |
 
 ## Examples
@@ -41,12 +40,6 @@ stacy init
 
 ```bash
 stacy init my-project
-```
-
-### Initialize with project name
-
-```bash
-stacy init --name "My Analysis"
 ```
 
 ## Exit Codes

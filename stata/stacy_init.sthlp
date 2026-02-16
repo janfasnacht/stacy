@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.0 - AUTO-GENERATED}{...}
+{* *! version 1.0.1 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_init##syntax"}{...}
 {viewerjumpto "Description" "stacy_init##description"}{...}
 {viewerjumpto "Options" "stacy_init##options"}{...}
@@ -22,7 +22,6 @@
 {synoptline}
 {syntab:Main}
 {synopt:{opt:force}}Overwrite existing files{p_end}
-{synopt:{opt:name(string)}}Project name{p_end}
 {synoptline}
 
 
@@ -38,9 +37,6 @@
 
 {phang}
 {opt force} overwrite existing files.
-
-{phang}
-{opt name} project name.
 
 {phang}
 {opt yes} skip interactive prompts (always set in stata).

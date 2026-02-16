@@ -7,11 +7,11 @@
 #   3. Help files (stata/*.sthlp) - generated from this schema
 #   4. Documentation (docs/src/commands/*.md) - generated from this schema
 #
-# Version: 0.1.0
+# Version: 1.0.1
 # Last Updated: 2026-01-23
 
 [meta]
-version = "0.1.0"
+version = "1.0.1"
 stata_minimum = "14.0"
 description = "Reproducible Stata Workflow Tool"
 
@@ -360,7 +360,6 @@ see_also = ["add", "install", "../configuration/project.md"]
 
 [commands.init.args]
 path = { type = "path", positional = true, description = "Project directory (default: current)" }
-name = { type = "string", description = "Project name", stata_option = "Name(string)" }
 force = { type = "bool", description = "Overwrite existing files", stata_option = "Force" }
 yes = { type = "bool", description = "Skip interactive prompts (always set in Stata)" }
 json = { type = "bool", description = "JSON output (internal)" }
@@ -385,10 +384,6 @@ commands = ["stacy init"]
 [[commands.init.examples]]
 title = "Initialize in new directory"
 commands = ["stacy init my-project"]
-
-[[commands.init.examples]]
-title = "Initialize with project name"
-commands = ["stacy init --name \"My Analysis\""]
 
 
 # =============================================================================

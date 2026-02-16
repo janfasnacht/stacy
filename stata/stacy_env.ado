@@ -1,6 +1,6 @@
 *! stacy_env.ado - Show environment configuration
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -33,39 +33,39 @@ program define stacy_env, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_adopath_count
+    capture confirm scalar stacy_adopath_count
     if _rc == 0 {
-        return scalar adopath_count = scalar(_stacy_json_adopath_count)
+        return scalar adopath_count = scalar(stacy_adopath_count)
     }
 
-    capture confirm scalar _stacy_json_has_config
+    capture confirm scalar stacy_has_config
     if _rc == 0 {
-        return scalar has_config = scalar(_stacy_json_has_config)
+        return scalar has_config = scalar(stacy_has_config)
     }
 
-    capture confirm scalar _stacy_json_show_progress
+    capture confirm scalar stacy_show_progress
     if _rc == 0 {
-        return scalar show_progress = scalar(_stacy_json_show_progress)
+        return scalar show_progress = scalar(stacy_show_progress)
     }
 
-    if `"`_stacy_json_cache_dir'"' != "" {
-        return local cache_dir `"`_stacy_json_cache_dir'"'
+    if `"${stacy_cache_dir}"' != "" {
+        return local cache_dir `"${stacy_cache_dir}"'
     }
 
-    if `"`_stacy_json_log_dir'"' != "" {
-        return local log_dir `"`_stacy_json_log_dir'"'
+    if `"${stacy_log_dir}"' != "" {
+        return local log_dir `"${stacy_log_dir}"'
     }
 
-    if `"`_stacy_json_project_root'"' != "" {
-        return local project_root `"`_stacy_json_project_root'"'
+    if `"${stacy_project_root}"' != "" {
+        return local project_root `"${stacy_project_root}"'
     }
 
-    if `"`_stacy_json_stata_binary'"' != "" {
-        return local stata_binary `"`_stacy_json_stata_binary'"'
+    if `"${stacy_stata_binary}"' != "" {
+        return local stata_binary `"${stacy_stata_binary}"'
     }
 
-    if `"`_stacy_json_stata_source'"' != "" {
-        return local stata_source `"`_stacy_json_stata_source'"'
+    if `"${stacy_stata_source}"' != "" {
+        return local stata_source `"${stacy_stata_source}"'
     }
 
     * Return failure if command failed

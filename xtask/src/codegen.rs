@@ -17,6 +17,17 @@ fn project_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// Read the package version from the root Cargo.toml
+fn package_version() -> Result<String> {
+    let cargo_toml = std::fs::read_to_string(project_root().join("Cargo.toml"))
+        .context("Failed to read Cargo.toml")?;
+    let parsed: toml::Value = cargo_toml.parse().context("Failed to parse Cargo.toml")?;
+    parsed["package"]["version"]
+        .as_str()
+        .map(String::from)
+        .context("Missing package.version in Cargo.toml")
+}
+
 /// Run code generation
 pub fn run(check: bool, verbose: bool) -> Result<()> {
     let schema_path = project_root().join("schema/commands.toml");
@@ -25,6 +36,7 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
 
     println!("Loading schema from: {}", schema_path.display());
     let schema = Schema::load(&schema_path)?;
+    let version = package_version()?;
 
     println!("Generating Stata wrappers...");
 
@@ -38,7 +50,7 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
         }
 
         // Generate .ado file
-        let ado_content = generate_ado(name, command, &schema)?;
+        let ado_content = generate_ado(name, command, &schema, &version)?;
         let ado_path = stata_dir.join(format!("{}.ado", command.stata_command));
 
         // Generate .sthlp file
@@ -50,7 +62,7 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
     }
 
     // Generate main stacy.ado dispatcher
-    let main_ado = generate_main_ado(&schema)?;
+    let main_ado = generate_main_ado(&schema, &version)?;
     generated_files.push((stata_dir.join("stacy.ado"), main_ado));
 
     // Generate main stacy.sthlp
@@ -167,7 +179,7 @@ fn print_diff(old: &str, new: &str) {
 // =============================================================================
 
 /// Generate a command wrapper .ado file
-fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<String> {
+fn generate_ado(name: &str, command: &Command, _schema: &Schema, version: &str) -> Result<String> {
     let mut out = String::new();
 
     // Header
@@ -176,7 +188,7 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<Strin
         command.stata_command, command.description
     ));
     out.push_str("*! Part of stacy: Reproducible Stata Workflow Tool\n");
-    out.push_str("*! Version: 0.1.0\n");
+    out.push_str(&format!("*! Version: {}\n", version));
     out.push_str("*! AUTO-GENERATED - DO NOT EDIT\n");
     out.push_str("*! Regenerate with: cargo xtask codegen\n\n");
 
@@ -191,7 +203,7 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<Strin
     let options = command.stata_options();
 
     for (arg_name, arg) in &positional {
-        if arg.required || arg.required_unless.is_none() {
+        if arg.required {
             out.push_str(&format!("<{}> ", arg_name));
         } else {
             out.push_str(&format!("[{}] ", arg_name));
@@ -237,8 +249,10 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<Strin
     out.push_str(&format!("    syntax {}\n\n", syntax));
 
     // Build command string
+    // Convert underscores to spaces for CLI subcommands (cache_info -> cache info)
+    let cli_cmd = name.replace('_', " ");
     out.push_str(&format!("    * Build command arguments\n"));
-    out.push_str(&format!("    local cmd \"{}\"\n\n", name));
+    out.push_str(&format!("    local cmd \"{}\"\n\n", cli_cmd));
 
     // Add positional arguments
     for (arg_name, arg) in command.positional_args() {
@@ -266,17 +280,31 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<Strin
 
     // Add options
     for (arg_name, arg) in command.stata_options() {
+        // CLI flags use hyphens (--no-warmup)
+        let cli_flag = arg_name.replace('_', "-");
+        // Stata macro name: derived from stata_option by lowercasing and stripping type
+        // e.g., NOWarmup -> nowarmup, OLDERthan(integer) -> olderthan
+        let stata_macro = if let Some(ref opt) = arg.stata_option {
+            let name_part = opt.split('(').next().unwrap_or(opt);
+            name_part.to_lowercase()
+        } else {
+            arg_name.replace('-', "_")
+        };
+
         if arg.arg_type == "bool" && arg.stata_option.is_some() {
             // Boolean options: check if set (non-empty)
-            out.push_str(&format!("    if \"`{}'\" != \"\" {{\n", arg_name));
-            out.push_str(&format!("        local cmd `\"`cmd' --{}\"\'\n", arg_name));
+            out.push_str(&format!("    if \"`{}'\" != \"\" {{\n", stata_macro));
+            out.push_str(&format!(
+                "        local cmd `\"`cmd' --{}\"\'\n",
+                cli_flag
+            ));
             out.push_str("    }\n\n");
-        } else if let Some(ref _opt) = arg.stata_option {
-            // String options: check if non-empty and add with value
-            out.push_str(&format!("    if `\"`{}'\"' != \"\" {{\n", arg_name));
+        } else if arg.stata_option.is_some() {
+            // String/integer options: check if non-empty and add with value
+            out.push_str(&format!("    if `\"`{}'\"' != \"\" {{\n", stata_macro));
             out.push_str(&format!(
                 "        local cmd `\"`cmd' --{} \"`{}'\"\"\'\n",
-                arg_name, arg_name
+                cli_flag, stata_macro
             ));
             out.push_str("    }\n\n");
         }
@@ -304,13 +332,17 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema) -> Result<Strin
         }
     }
 
-    // Then locals
+    // Then locals (string values stored as globals by --format stata output)
     for (ret_name, ret) in command.returns_sorted() {
         if ret.is_local() {
             let internal_name = ret.internal_scalar_name(ret_name);
-            out.push_str(&format!("    if `\"`{}'\"' != \"\" {{\n", internal_name));
+            // Reference global macros with ${name} inside compound quotes: `"${name}"'
             out.push_str(&format!(
-                "        return local {} `\"`{}'\"'\n",
+                "    if `\"${{{}}}\"' != \"\" {{\n",
+                internal_name
+            ));
+            out.push_str(&format!(
+                "        return local {} `\"${{{}}}\"'\n",
                 ret_name, internal_name
             ));
             out.push_str("    }\n\n");
@@ -334,7 +366,7 @@ fn build_stata_syntax(command: &Command) -> String {
 
     // Positional arguments
     for (name, arg) in command.positional_args() {
-        if arg.required || arg.required_unless.is_none() {
+        if arg.required {
             parts.push(format!("anything(name={})", name));
         } else {
             parts.push(format!("[anything(name={})]", name));
@@ -342,10 +374,24 @@ fn build_stata_syntax(command: &Command) -> String {
     }
 
     // Options
+    // Stata's syntax command requires integer/real options to have a default
+    // value (e.g., Runs(integer 0) not just Runs(integer)). We use (string)
+    // instead so the empty-check works correctly when the option is unspecified.
+    // Type validation happens on the CLI side.
     let options: Vec<String> = command
         .stata_options()
         .iter()
-        .filter_map(|(_, arg)| arg.stata_option.clone())
+        .filter_map(|(_, arg)| {
+            arg.stata_option.as_ref().map(|opt| {
+                if opt.contains("(integer)") {
+                    opt.replace("(integer)", "(string)")
+                } else if opt.contains("(real)") {
+                    opt.replace("(real)", "(string)")
+                } else {
+                    opt.clone()
+                }
+            })
+        })
         .collect();
 
     if !options.is_empty() {
@@ -360,12 +406,15 @@ fn build_stata_syntax(command: &Command) -> String {
 // =============================================================================
 
 /// Generate a command help .sthlp file
-fn generate_sthlp(name: &str, command: &Command, _schema: &Schema) -> Result<String> {
+fn generate_sthlp(name: &str, command: &Command, schema: &Schema) -> Result<String> {
     let mut out = String::new();
 
     // Header
     out.push_str("{smcl}\n");
-    out.push_str("{* *! version 0.1.0 - AUTO-GENERATED}{...}\n");
+    out.push_str(&format!(
+        "{{* *! version {} - AUTO-GENERATED}}{{...}}\n",
+        schema.meta.version
+    ));
     out.push_str(&format!(
         "{{viewerjumpto \"Syntax\" \"{}##syntax\"}}{{...}}\n",
         command.stata_command
@@ -541,11 +590,11 @@ fn generate_sthlp(name: &str, command: &Command, _schema: &Schema) -> Result<Str
 // =============================================================================
 
 /// Generate the main stacy.ado dispatcher
-fn generate_main_ado(schema: &Schema) -> Result<String> {
+fn generate_main_ado(schema: &Schema, version: &str) -> Result<String> {
     let mut out = String::new();
 
     out.push_str("*! stacy.ado - Reproducible Stata Workflow Tool\n");
-    out.push_str("*! Version: 0.1.0\n");
+    out.push_str(&format!("*! Version: {}\n", version));
     out.push_str("*! Author: Jan Fasnacht\n");
     out.push_str("*! URL: https://github.com/janfasnacht/stacy\n");
     out.push_str("*! AUTO-GENERATED - DO NOT EDIT\n");
@@ -602,7 +651,10 @@ fn generate_main_ado(schema: &Schema) -> Result<String> {
     out.push_str("        stacy_setup `0'\n");
     out.push_str("    }\n");
     out.push_str("    else if \"`subcmd'\" == \"version\" | \"`subcmd'\" == \"--version\" {\n");
-    out.push_str("        di as text \"stacy Stata wrapper v0.1.0\"\n");
+    out.push_str(&format!(
+        "        di as text \"stacy Stata wrapper v{}\"\n",
+        version
+    ));
     out.push_str("    }\n");
     out.push_str("    else if \"`subcmd'\" == \"help\" | \"`subcmd'\" == \"--help\" {\n");
     out.push_str("        help stacy\n");
@@ -628,7 +680,10 @@ fn generate_main_sthlp(schema: &Schema) -> Result<String> {
     let mut out = String::new();
 
     out.push_str("{smcl}\n");
-    out.push_str("{* *! version 0.1.0 - AUTO-GENERATED}{...}\n");
+    out.push_str(&format!(
+        "{{* *! version {} - AUTO-GENERATED}}{{...}}\n",
+        schema.meta.version
+    ));
     out.push_str("{viewerjumpto \"Syntax\" \"stacy##syntax\"}{...}\n");
     out.push_str("{viewerjumpto \"Description\" \"stacy##description\"}{...}\n");
     out.push_str("{viewerjumpto \"Commands\" \"stacy##commands\"}{...}\n");

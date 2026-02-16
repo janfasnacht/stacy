@@ -28,45 +28,45 @@ impl OutputFormat {
     }
 }
 
-/// Escape a string for use in Stata compound quotes
+/// Escape a string for use in Stata double-quoted strings
 ///
-/// Compound quotes in Stata are: `"..."'
-/// The only character that needs escaping is backtick (`), which is replaced
-/// with `=char(96)' to safely embed it.
-///
-/// Note: Compound quotes handle `{`, `}`, and `"` without escaping.
+/// In Stata, double-quoted strings ("...") do not expand macros,
+/// so only embedded double quotes need escaping (replaced with single quotes).
 pub fn escape_stata_string(s: &str) -> String {
-    // Replace backticks with Stata's char(96) expression
-    // The format is: `=char(96)'
-    s.replace('`', "`=char(96)'")
+    s.replace('"', "'")
 }
 
 /// Format a boolean as a Stata scalar assignment
 pub fn format_stata_scalar_bool(name: &str, value: bool) -> String {
     let stata_val = if value { 1 } else { 0 };
-    format!("scalar _stacy_{} = {}", name, stata_val)
+    format!("scalar stacy_{} = {}", name, stata_val)
 }
 
 /// Format an integer as a Stata scalar assignment
 pub fn format_stata_scalar_int(name: &str, value: i64) -> String {
-    format!("scalar _stacy_{} = {}", name, value)
+    format!("scalar stacy_{} = {}", name, value)
 }
 
 /// Format a usize as a Stata scalar assignment
 pub fn format_stata_scalar_usize(name: &str, value: usize) -> String {
-    format!("scalar _stacy_{} = {}", name, value)
+    format!("scalar stacy_{} = {}", name, value)
 }
 
 /// Format a float as a Stata scalar assignment
 pub fn format_stata_scalar_float(name: &str, value: f64) -> String {
     // Use enough precision for accurate representation
-    format!("scalar _stacy_{} = {:.6}", name, value)
+    format!("scalar stacy_{} = {:.6}", name, value)
 }
 
-/// Format a string as a Stata local assignment using compound quotes
+/// Format a string as a Stata global macro assignment
+///
+/// Uses `global` instead of `local` so that the value survives across program
+/// scope boundaries (e.g., from `stacy_exec` back to the calling wrapper).
+/// Uses regular double quotes (not compound quotes) since the `global` command
+/// does not accept compound quote syntax.
 pub fn format_stata_local(name: &str, value: &str) -> String {
     let escaped = escape_stata_string(value);
-    format!("local _stacy_{} `\"{}\"'", name, escaped)
+    format!("global stacy_{} \"{}\"", name, escaped)
 }
 
 /// Format an optional string as a Stata local assignment
@@ -85,34 +85,31 @@ mod tests {
     }
 
     #[test]
+    fn test_escape_stata_string_with_double_quotes() {
+        // Double quotes are replaced with single quotes
+        assert_eq!(escape_stata_string("say \"hello\""), "say 'hello'");
+    }
+
+    #[test]
     fn test_escape_stata_string_with_backtick() {
-        assert_eq!(
-            escape_stata_string("hello `world`"),
-            "hello `=char(96)'world`=char(96)'"
-        );
+        // Backticks are not special inside double-quoted strings
+        assert_eq!(escape_stata_string("hello `world`"), "hello `world`");
     }
 
     #[test]
     fn test_escape_stata_string_with_braces() {
-        // Braces don't need escaping in compound quotes
         assert_eq!(escape_stata_string("{key: value}"), "{key: value}");
-    }
-
-    #[test]
-    fn test_escape_stata_string_with_quotes() {
-        // Regular quotes don't need escaping in compound quotes
-        assert_eq!(escape_stata_string("say \"hello\""), "say \"hello\"");
     }
 
     #[test]
     fn test_format_stata_scalar_bool() {
         assert_eq!(
             format_stata_scalar_bool("success", true),
-            "scalar _stacy_success = 1"
+            "scalar stacy_success = 1"
         );
         assert_eq!(
             format_stata_scalar_bool("success", false),
-            "scalar _stacy_success = 0"
+            "scalar stacy_success = 0"
         );
     }
 
@@ -120,11 +117,11 @@ mod tests {
     fn test_format_stata_scalar_int() {
         assert_eq!(
             format_stata_scalar_int("exit_code", 0),
-            "scalar _stacy_exit_code = 0"
+            "scalar stacy_exit_code = 0"
         );
         assert_eq!(
             format_stata_scalar_int("exit_code", -1),
-            "scalar _stacy_exit_code = -1"
+            "scalar stacy_exit_code = -1"
         );
     }
 
@@ -132,7 +129,7 @@ mod tests {
     fn test_format_stata_scalar_float() {
         assert_eq!(
             format_stata_scalar_float("duration", 1.5),
-            "scalar _stacy_duration = 1.500000"
+            "scalar stacy_duration = 1.500000"
         );
     }
 
@@ -140,7 +137,7 @@ mod tests {
     fn test_format_stata_local() {
         assert_eq!(
             format_stata_local("log_file", "/path/to/file.log"),
-            "local _stacy_log_file `\"/path/to/file.log\"'"
+            "global stacy_log_file \"/path/to/file.log\""
         );
     }
 
@@ -148,7 +145,7 @@ mod tests {
     fn test_format_stata_local_with_spaces() {
         assert_eq!(
             format_stata_local("path", "/path/with spaces/file.do"),
-            "local _stacy_path `\"/path/with spaces/file.do\"'"
+            "global stacy_path \"/path/with spaces/file.do\""
         );
     }
 
@@ -156,7 +153,7 @@ mod tests {
     fn test_format_stata_local_opt() {
         assert_eq!(
             format_stata_local_opt("name", Some("value")),
-            Some("local _stacy_name `\"value\"'".to_string())
+            Some("global stacy_name \"value\"".to_string())
         );
         assert_eq!(format_stata_local_opt("name", None), None);
     }

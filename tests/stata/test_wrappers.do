@@ -15,20 +15,20 @@ set more off
 * Otherwise, try the stata/ directory relative to repo root
 capture confirm file "ado/stacy.ado"
 if _rc == 0 {
-    * Running from fixture - use local ado/
-    adopath + "`c(pwd)'/ado/"
+    * Running from fixture - use local ado/ (highest priority)
+    adopath ++ "`c(pwd)'/ado/"
     di as text "Using local ado/ directory"
 }
 else {
     * Try stata/ relative to current directory (running from repo root)
     capture confirm file "stata/stacy.ado"
     if _rc == 0 {
-        adopath + "`c(pwd)'/stata/"
+        adopath ++ "`c(pwd)'/stata/"
         di as text "Using stata/ directory"
     }
     else {
         * Last resort: check parent of tests/stata/ directory
-        adopath + "`c(pwd)'/stata/"
+        adopath ++ "`c(pwd)'/stata/"
         di as text "Using hardcoded stata/ path"
     }
 }
@@ -495,7 +495,7 @@ di as text "{hline 40}"
 local tempdir "`c(pwd)'/temp_init_test"
 capture mkdir "`tempdir'"
 
-capture noisily stacy init "`tempdir'", name("test-project") force
+capture noisily stacy init "`tempdir'", force
 local rc = _rc
 
 if `rc' == 0 {
@@ -531,11 +531,11 @@ local tempdir "`c(pwd)'/temp_init_force_test"
 capture mkdir "`tempdir'"
 
 * First init
-capture noisily stacy init "`tempdir'", name("first-project")
+capture noisily stacy init "`tempdir'"
 local rc1 = _rc
 
 * Second init with force (should succeed)
-capture noisily stacy init "`tempdir'", name("second-project") force
+capture noisily stacy init "`tempdir'", force
 local rc2 = _rc
 
 if `rc2' == 0 {

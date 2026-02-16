@@ -1,6 +1,6 @@
 *! stacy_run.ado - Execute a Stata script with error detection
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -50,7 +50,7 @@ program define stacy_run, rclass
         local cmd `"`cmd' --profile"'
     }
 
-    if "`quiet'" != "" {
+    if "`quietly'" != "" {
         local cmd `"`cmd' --quiet"'
     }
 
@@ -63,36 +63,36 @@ program define stacy_run, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_duration_secs
+    capture confirm scalar stacy_duration_secs
     if _rc == 0 {
-        return scalar duration_secs = scalar(_stacy_json_duration_secs)
+        return scalar duration_secs = scalar(stacy_duration_secs)
     }
 
-    capture confirm scalar _stacy_json_error_count
+    capture confirm scalar stacy_error_count
     if _rc == 0 {
-        return scalar error_count = scalar(_stacy_json_error_count)
+        return scalar error_count = scalar(stacy_error_count)
     }
 
-    capture confirm scalar _stacy_json_exit_code
+    capture confirm scalar stacy_exit_code
     if _rc == 0 {
-        return scalar exit_code = scalar(_stacy_json_exit_code)
+        return scalar exit_code = scalar(stacy_exit_code)
     }
 
-    capture confirm scalar _stacy_json_success
+    capture confirm scalar stacy_success
     if _rc == 0 {
-        return scalar success = scalar(_stacy_json_success)
+        return scalar success = scalar(stacy_success)
     }
 
-    if `"`_stacy_json_log_file'"' != "" {
-        return local log_file `"`_stacy_json_log_file'"'
+    if `"${stacy_log_file}"' != "" {
+        return local log_file `"${stacy_log_file}"'
     }
 
-    if `"`_stacy_json_script'"' != "" {
-        return local script `"`_stacy_json_script'"'
+    if `"${stacy_script}"' != "" {
+        return local script `"${stacy_script}"'
     }
 
-    if `"`_stacy_json_source'"' != "" {
-        return local source `"`_stacy_json_source'"'
+    if `"${stacy_source}"' != "" {
+        return local source `"${stacy_source}"'
     }
 
     * Return failure if command failed

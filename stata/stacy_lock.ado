@@ -1,6 +1,6 @@
 *! stacy_lock.ado - Generate or verify lockfile
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -36,23 +36,23 @@ program define stacy_lock, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_in_sync
+    capture confirm scalar stacy_in_sync
     if _rc == 0 {
-        return scalar in_sync = scalar(_stacy_json_in_sync)
+        return scalar in_sync = scalar(stacy_in_sync)
     }
 
-    capture confirm scalar _stacy_json_package_count
+    capture confirm scalar stacy_package_count
     if _rc == 0 {
-        return scalar package_count = scalar(_stacy_json_package_count)
+        return scalar package_count = scalar(stacy_package_count)
     }
 
-    capture confirm scalar _stacy_json_updated
+    capture confirm scalar stacy_updated
     if _rc == 0 {
-        return scalar updated = scalar(_stacy_json_updated)
+        return scalar updated = scalar(stacy_updated)
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

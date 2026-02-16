@@ -1,6 +1,6 @@
 *! stacy_outdated.ado - Check for package updates
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -31,30 +31,30 @@ program define stacy_outdated, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_outdated_count
+    capture confirm scalar stacy_outdated_count
     if _rc == 0 {
-        return scalar outdated_count = scalar(_stacy_json_outdated_count)
+        return scalar outdated_count = scalar(stacy_outdated_count)
     }
 
-    capture confirm scalar _stacy_json_total_count
+    capture confirm scalar stacy_total_count
     if _rc == 0 {
-        return scalar total_count = scalar(_stacy_json_total_count)
+        return scalar total_count = scalar(stacy_total_count)
     }
 
-    if `"`_stacy_json_outdated_currents'"' != "" {
-        return local outdated_currents `"`_stacy_json_outdated_currents'"'
+    if `"${stacy_outdated_currents}"' != "" {
+        return local outdated_currents `"${stacy_outdated_currents}"'
     }
 
-    if `"`_stacy_json_outdated_latests'"' != "" {
-        return local outdated_latests `"`_stacy_json_outdated_latests'"'
+    if `"${stacy_outdated_latests}"' != "" {
+        return local outdated_latests `"${stacy_outdated_latests}"'
     }
 
-    if `"`_stacy_json_outdated_names'"' != "" {
-        return local outdated_names `"`_stacy_json_outdated_names'"'
+    if `"${stacy_outdated_names}"' != "" {
+        return local outdated_names `"${stacy_outdated_names}"'
     }
 
-    if `"`_stacy_json_status'"' != "" {
-        return local status `"`_stacy_json_status'"'
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

@@ -500,3 +500,121 @@ fn test_dispatcher_handles_unknown_commands() {
         "Dispatcher must show error message for unknown commands"
     );
 }
+
+// =============================================================================
+// Generated .ado file Stata syntax validation
+// =============================================================================
+
+/// Read all generated .ado files from stata/ directory
+fn read_all_generated_ado_files() -> Vec<(String, String)> {
+    let stata_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    let mut results = Vec::new();
+
+    for entry in fs::read_dir(&stata_dir).expect("Failed to read stata directory") {
+        let entry = entry.expect("Failed to read directory entry");
+        let path = entry.path();
+        if path.extension().map_or(false, |e| e == "ado") {
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            let content = fs::read_to_string(&path).expect("Failed to read ado file");
+            // Only check auto-generated files
+            if content.contains("AUTO-GENERATED") {
+                results.push((name, content));
+            }
+        }
+    }
+
+    assert!(
+        !results.is_empty(),
+        "No auto-generated .ado files found in stata/"
+    );
+    results
+}
+
+#[test]
+fn test_generated_ado_syntax_no_bare_integer() {
+    // Bug class 3: `syntax` with `(integer)` or `(real)` without a default value
+    // causes Stata rc=197. Must be `(integer 0)` or `(string)`.
+    let re = regex::Regex::new(r"\(integer\)|\(real\)").unwrap();
+
+    for (name, content) in read_all_generated_ado_files() {
+        for (line_num, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("syntax ") || trimmed.starts_with("syntax\t") {
+                assert!(
+                    !re.is_match(trimmed),
+                    "{}:{}: syntax line has bare (integer) or (real) without default: {}",
+                    name,
+                    line_num + 1,
+                    trimmed
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_generated_ado_globals_use_stacy_prefix() {
+    // Bug class 1: `_stacy_` prefix instead of `stacy_` for globals.
+    // Stata forbids globals starting with underscore.
+    for (name, content) in read_all_generated_ado_files() {
+        for (line_num, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            // Check global references use stacy_ not _stacy_
+            if trimmed.contains("_stacy_") {
+                // Allow references to programs named _stacy_* (e.g., _stacy_exec)
+                // and comments. Only flag global/scalar variable references.
+                let is_program_call = trimmed.starts_with("_stacy_")
+                    || trimmed.contains("program define _stacy_");
+                let is_comment = trimmed.starts_with("*") || trimmed.starts_with("//");
+
+                if !is_program_call && !is_comment {
+                    // Check for global macro references: ${_stacy_...} or $(_stacy_...)
+                    assert!(
+                        !trimmed.contains("${_stacy_") && !trimmed.contains("$(_stacy_"),
+                        "{}:{}: uses _stacy_ prefix for global macro (Stata forbids _ prefix): {}",
+                        name,
+                        line_num + 1,
+                        trimmed
+                    );
+                    // Check for scalar references: scalar(_stacy_...)
+                    assert!(
+                        !trimmed.contains("scalar(_stacy_")
+                            && !trimmed.contains("scalar _stacy_"),
+                        "{}:{}: uses _stacy_ prefix for scalar (should be stacy_): {}",
+                        name,
+                        line_num + 1,
+                        trimmed
+                    );
+                    // Check for global assignment: global _stacy_...
+                    assert!(
+                        !trimmed.contains("global _stacy_"),
+                        "{}:{}: uses _stacy_ prefix in global assignment: {}",
+                        name,
+                        line_num + 1,
+                        trimmed
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn test_generated_ado_no_compound_quotes_in_globals() {
+    // Bug class 2: compound quotes (`"..."') in `global` statements.
+    // Stata's `global` command does NOT accept compound quote syntax.
+    let re = regex::Regex::new(r#"global\s+\S+\s+`""#).unwrap();
+
+    for (name, content) in read_all_generated_ado_files() {
+        for (line_num, line) in content.lines().enumerate() {
+            let trimmed = line.trim();
+            assert!(
+                !re.is_match(trimmed),
+                "{}:{}: global statement uses compound quotes (Stata rejects this): {}",
+                name,
+                line_num + 1,
+                trimmed
+            );
+        }
+    }
+}

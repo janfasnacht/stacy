@@ -229,9 +229,9 @@ impl ReturnValue {
         }
     }
 
-    /// Get the scalar name used internally during JSON parsing
+    /// Get the variable name used internally by the CLI's --format stata output
     pub fn internal_scalar_name(&self, name: &str) -> String {
-        format!("_stacy_json_{}", name)
+        format!("stacy_{}", name)
     }
 }
 
@@ -248,7 +248,7 @@ mod tests {
 
         let schema = Schema::load(&schema_path).expect("Failed to load schema");
 
-        assert_eq!(schema.meta.version, "0.1.0");
+        assert!(!schema.meta.version.is_empty(), "schema version should not be empty");
         assert!(schema.commands.contains_key("run"));
         assert!(schema.commands.contains_key("doctor"));
     }

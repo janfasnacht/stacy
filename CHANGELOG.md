@@ -7,16 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-02-15
+## [1.0.1] - 2026-02-16
 
 ### Fixed
 
-- Fix `net install` from Stata: remove 5 phantom files from `stacy.pkg` that caused r(601)
+- Fix `net install` from Stata: remove phantom files from `stacy.pkg` that caused r(601)
+- Fix `--format stata` output: wrong global prefix, wrong quoting, bare types in syntax
+- Fix `stacy init` `--name` option and `stacy task` config section reference
+- Fix installation docs command name
+
+### Added
+
+- 24 tests for `--format stata` output and codegen correctness
 
 ### Changed
 
-- Align project description, README, and docs intro with paper framing
-- Add Stata installation instructions to README and docs
+- Regenerate all Stata wrappers with fixes
+- Align docs and README with paper framing
 
 ## [1.0.0] - 2026-02-15
 
@@ -42,5 +49,6 @@ Initial public release.
 - `--format json` and `--format stata` output modes
 - Cross-platform support: macOS, Linux, Windows
 
-[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/janfasnacht/stacy/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/janfasnacht/stacy/releases/tag/v1.0.0

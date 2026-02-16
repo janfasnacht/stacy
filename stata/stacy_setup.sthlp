@@ -82,7 +82,7 @@ provided, the latest version is installed.
 {phang2}{cmd:. stacy_setup}{p_end}
 
 {pstd}Install specific version:{p_end}
-{phang2}{cmd:. stacy_setup, version("v0.1.0")}{p_end}
+{phang2}{cmd:. stacy_setup, version("v1.0.1")}{p_end}
 
 {pstd}Install to custom location:{p_end}
 {phang2}{cmd:. stacy_setup, path("/usr/local/bin")}{p_end}

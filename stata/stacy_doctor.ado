@@ -1,6 +1,6 @@
 *! stacy_doctor.ado - Run system diagnostics
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 0.1.0
+*! Version: 1.0.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -30,29 +30,29 @@ program define stacy_doctor, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
-    capture confirm scalar _stacy_json_check_count
+    capture confirm scalar stacy_check_count
     if _rc == 0 {
-        return scalar check_count = scalar(_stacy_json_check_count)
+        return scalar check_count = scalar(stacy_check_count)
     }
 
-    capture confirm scalar _stacy_json_failed
+    capture confirm scalar stacy_failed
     if _rc == 0 {
-        return scalar failed = scalar(_stacy_json_failed)
+        return scalar failed = scalar(stacy_failed)
     }
 
-    capture confirm scalar _stacy_json_passed
+    capture confirm scalar stacy_passed
     if _rc == 0 {
-        return scalar passed = scalar(_stacy_json_passed)
+        return scalar passed = scalar(stacy_passed)
     }
 
-    capture confirm scalar _stacy_json_ready
+    capture confirm scalar stacy_ready
     if _rc == 0 {
-        return scalar ready = scalar(_stacy_json_ready)
+        return scalar ready = scalar(stacy_ready)
     }
 
-    capture confirm scalar _stacy_json_warnings
+    capture confirm scalar stacy_warnings
     if _rc == 0 {
-        return scalar warnings = scalar(_stacy_json_warnings)
+        return scalar warnings = scalar(stacy_warnings)
     }
 
     * Return failure if command failed
