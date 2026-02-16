@@ -130,9 +130,7 @@ fn test_init_format_stata_success_status() {
         .arg("stata")
         .assert()
         .success()
-        .stdout(predicate::str::contains(
-            "global stacy_status \"success\"",
-        ));
+        .stdout(predicate::str::contains("global stacy_status \"success\""));
 }
 
 // =============================================================================

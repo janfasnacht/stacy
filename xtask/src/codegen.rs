@@ -294,10 +294,7 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema, version: &str) 
         if arg.arg_type == "bool" && arg.stata_option.is_some() {
             // Boolean options: check if set (non-empty)
             out.push_str(&format!("    if \"`{}'\" != \"\" {{\n", stata_macro));
-            out.push_str(&format!(
-                "        local cmd `\"`cmd' --{}\"\'\n",
-                cli_flag
-            ));
+            out.push_str(&format!("        local cmd `\"`cmd' --{}\"\'\n", cli_flag));
             out.push_str("    }\n\n");
         } else if arg.stata_option.is_some() {
             // String/integer options: check if non-empty and add with value
@@ -337,10 +334,7 @@ fn generate_ado(name: &str, command: &Command, _schema: &Schema, version: &str) 
         if ret.is_local() {
             let internal_name = ret.internal_scalar_name(ret_name);
             // Reference global macros with ${name} inside compound quotes: `"${name}"'
-            out.push_str(&format!(
-                "    if `\"${{{}}}\"' != \"\" {{\n",
-                internal_name
-            ));
+            out.push_str(&format!("    if `\"${{{}}}\"' != \"\" {{\n", internal_name));
             out.push_str(&format!(
                 "        return local {} `\"${{{}}}\"'\n",
                 ret_name, internal_name

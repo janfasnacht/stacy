@@ -563,8 +563,8 @@ fn test_generated_ado_globals_use_stacy_prefix() {
             if trimmed.contains("_stacy_") {
                 // Allow references to programs named _stacy_* (e.g., _stacy_exec)
                 // and comments. Only flag global/scalar variable references.
-                let is_program_call = trimmed.starts_with("_stacy_")
-                    || trimmed.contains("program define _stacy_");
+                let is_program_call =
+                    trimmed.starts_with("_stacy_") || trimmed.contains("program define _stacy_");
                 let is_comment = trimmed.starts_with("*") || trimmed.starts_with("//");
 
                 if !is_program_call && !is_comment {
@@ -578,8 +578,7 @@ fn test_generated_ado_globals_use_stacy_prefix() {
                     );
                     // Check for scalar references: scalar(_stacy_...)
                     assert!(
-                        !trimmed.contains("scalar(_stacy_")
-                            && !trimmed.contains("scalar _stacy_"),
+                        !trimmed.contains("scalar(_stacy_") && !trimmed.contains("scalar _stacy_"),
                         "{}:{}: uses _stacy_ prefix for scalar (should be stacy_): {}",
                         name,
                         line_num + 1,

@@ -2161,10 +2161,7 @@ mod tests {
                             line
                         );
                     } else {
-                        panic!(
-                            "{}: scalar line missing '=' assignment: {}",
-                            name, line
-                        );
+                        panic!("{}: scalar line missing '=' assignment: {}", name, line);
                     }
                 }
             }

@@ -83,8 +83,14 @@ fn print_json_output(code: u32, entry: &ErrorCodeEntry) {
 
 fn print_stata_output(code: u32, entry: &ErrorCodeEntry) {
     println!("scalar stacy_error_code = {}", code);
-    println!("global stacy_error_message \"{}\"", entry.message.replace('"', "'"));
-    println!("global stacy_error_category \"{}\"", entry.category.replace('"', "'"));
+    println!(
+        "global stacy_error_message \"{}\"",
+        entry.message.replace('"', "'")
+    );
+    println!(
+        "global stacy_error_category \"{}\"",
+        entry.category.replace('"', "'")
+    );
 }
 
 fn print_human_fallback(code: u32, category: &str) {
@@ -114,6 +120,12 @@ fn print_json_fallback(code: u32, category: &str) {
 
 fn print_stata_fallback(code: u32, category: &str) {
     println!("scalar stacy_error_code = {}", code);
-    println!("global stacy_error_message \"{} error\"", category.replace('"', "'"));
-    println!("global stacy_error_category \"{}\"", category.replace('"', "'"));
+    println!(
+        "global stacy_error_message \"{} error\"",
+        category.replace('"', "'")
+    );
+    println!(
+        "global stacy_error_category \"{}\"",
+        category.replace('"', "'")
+    );
 }
