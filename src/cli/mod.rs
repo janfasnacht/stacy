@@ -1,0 +1,22 @@
+pub mod add;
+pub mod bench;
+pub mod cache;
+pub mod deps;
+pub mod doctor;
+pub mod env;
+
+pub mod explain;
+pub mod format;
+pub mod init;
+pub mod install;
+pub mod list;
+pub mod lock;
+pub mod outdated;
+pub mod output_format;
+pub mod output_types;
+pub mod remove;
+pub mod run;
+pub mod task;
+pub mod test;
+pub mod test_output;
+pub mod update;

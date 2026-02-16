@@ -1,0 +1,40 @@
+# Rust
+/target/
+**/*.rs.bk
+# Note: Cargo.lock is committed for reproducible builds (this is an application, not a library)
+
+# Internal development files
+CLAUDE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+/tests/tmp/
+*.log
+
+# Local development
+/scratch/
+/temp/
+
+# Development materials (internal, not for public repo)
+/dev/
+
+# External reference materials - selective gitignore
+# Commit: scripts, structured data, markdown docs
+# Ignore: PDFs (copyrighted), raw extraction artifacts
+/external/stata-docs/*.pdf
+/external/stata-docs/raw/
+/external/stata-docs/markdown/error-codes-raw.md
+
+# Documentation
+/docs/book/
+*.bundle

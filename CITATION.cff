@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+title: "stacy: Modern Stata Workflow Tool"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - family-names: Fasnacht
+    given-names: Jan
+    email: jfasnacht@uchicago.edu
+repository-code: https://github.com/janfasnacht/stacy
+license: MIT
+version: 1.0.0
+date-released: 2026-02-15
+keywords:
+  - stata
+  - reproducibility
+  - workflow
+  - research

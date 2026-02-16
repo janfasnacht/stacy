@@ -1,0 +1,15 @@
+# stacy project configuration
+# See: https://github.com/janfasnacht/stacy
+
+[project]
+# name = "my-analysis"
+# stata_binary = "/path/to/stata-mp"
+
+[run]
+log_dir = "logs"
+show_progress = true
+# progress_interval_seconds = 10
+# max_log_size_mb = 50
+
+[packages]
+ado_dir = "ado"

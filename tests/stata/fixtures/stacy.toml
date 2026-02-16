@@ -1,0 +1,16 @@
+# Test fixture: stacy project configuration for Stata wrapper tests
+
+[project]
+name = "wrapper-test-project"
+
+[run]
+log_dir = "logs"
+show_progress = false
+
+[packages]
+ado_dir = "ado"
+
+# Define a simple task for testing stacy_task
+[tasks.test-task]
+description = "A simple test task"
+scripts = ["scripts/hello.do"]

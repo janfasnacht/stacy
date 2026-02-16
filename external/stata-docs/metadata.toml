@@ -1,0 +1,72 @@
+# Metadata for Stata documentation extraction
+# This file tracks what we've extracted and from which sources
+
+[extraction]
+date = "2025-12-01"
+stata_version = "18"
+docs_location = "/Applications/StataNow/docs"
+
+[sources.programming_manual]
+filename = "p.pdf"
+full_path = "/Applications/StataNow/docs/p.pdf"
+size_mb = 4.9
+description = "Programming Manual - Contains error codes, adopath mechanics, batch mode"
+
+[sources.reference_manual]
+filename = "r.pdf"
+full_path = "/Applications/StataNow/docs/r.pdf"
+size_mb = 29.0
+description = "Reference Manual - All command syntax and command-specific errors"
+
+[sources.user_guide]
+filename = "u.pdf"
+full_path = "/Applications/StataNow/docs/u.pdf"
+size_mb = 3.5
+description = "User's Guide - Batch mode, log files, installation structure"
+
+[extractions.error_codes]
+source = "p.pdf"
+pages = "209-223"
+extracted_date = "2025-12-22"
+formats = ["markdown", "toml", "json", "csv", "rust"]
+status = "complete"
+count = 182
+notes = "Complete error code reference from appendix. All critical codes verified."
+
+[extractions.batch_mode]
+source = "u.pdf"
+pages = "TBD"
+extracted_date = ""
+status = "planned"
+# notes = "Batch mode behavior, exit codes, log file handling"
+
+[extractions.adopath]
+source = "p.pdf"
+pages = "TBD"
+extracted_date = ""
+status = "planned"
+# notes = "Adopath mechanics and precedence"
+
+# Version-specific notes
+[versions.stata18]
+release_date = "2023"
+error_code_changes = "TBD"
+notes = "Current version being documented"
+
+# Future versions will be added here
+# [versions.stata19]
+# release_date = "TBD"
+# error_code_changes = "Compare against stata18"
+
+# Extraction session log
+[extraction_notes.error_codes_2025_12_22]
+tool_pdf_extraction = "qpdf 10.0.4"
+tool_pdf_to_text = "pdftotext (from poppler)"
+python_version = "3.9.6"
+total_codes = 182
+code_range = "1-2001"
+critical_codes_verified = ["r(1)", "r(198)", "r(199)", "r(601)", "r(603)", "r(950)"]
+known_gaps = "Gaps are normal - Stata has historically unassigned error codes"
+quality = "high"
+parser_format = "numbered_list"
+notes = "Successfully parsed numbered list format from Stata appendix. All outputs generated and validated."

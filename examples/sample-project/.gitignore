@@ -1,0 +1,10 @@
+# Stata generated files
+*.log
+*.smcl
+
+# Downloaded packages (use stacy install to restore)
+ado/
+
+# OS files
+.DS_Store
+Thumbs.db

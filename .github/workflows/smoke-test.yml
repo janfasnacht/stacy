@@ -1,0 +1,79 @@
+# Release-readiness smoke tests for stacy
+# Manual trigger — run before cutting a release to verify end-to-end CLI behavior
+
+name: Smoke Test
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  smoke:
+    name: Smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Add to PATH
+        run: echo "${{ github.workspace }}/target/release" >> $GITHUB_PATH
+
+      - name: Verify binary
+        run: stacy --version
+
+      - name: stacy doctor
+        run: stacy doctor --format json || true  # Stata not installed in CI
+
+      - name: stacy explain
+        run: stacy explain 199
+
+      - name: stacy init → add → lock round-trip
+        run: |
+          cd "$(mktemp -d)"
+          stacy init test-project
+          cd test-project
+          stacy add estout
+          stacy lock
+          # Verify files were created
+          test -f stacy.toml || { echo "stacy.toml missing"; exit 1; }
+          test -f stacy.lock || { echo "stacy.lock missing"; exit 1; }
+          echo "Round-trip passed"
+
+  install-script:
+    name: Install Script (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate syntax
+        run: bash -n install.sh
+
+      - name: Test install (requires a GitHub release)
+        run: |
+          bash install.sh && stacy --version
+        env:
+          STACY_INSTALL_DIR: ${{ runner.temp }}/bin
+          PATH: ${{ runner.temp }}/bin:$PATH
+        continue-on-error: true  # Will fail if no release exists yet

@@ -1,0 +1,901 @@
+# stacy Command Schema
+# Single source of truth for CLI interface, Stata wrappers, and documentation
+#
+# This file documents the contract between:
+#   1. Rust CLI (src/cli/*.rs) - primary implementation
+#   2. Stata wrappers (stata/*.ado) - generated from this schema
+#   3. Help files (stata/*.sthlp) - generated from this schema
+#   4. Documentation (docs/src/commands/*.md) - generated from this schema
+#
+# Version: 0.1.0
+# Last Updated: 2026-01-23
+
+[meta]
+version = "0.1.0"
+stata_minimum = "14.0"
+description = "Modern Stata Workflow Tool"
+
+# =============================================================================
+# SCHEMA DOCUMENTATION
+# =============================================================================
+#
+# Each command can have:
+#   description     = "Short description for --help and synopsis"
+#   category        = "execution|packages|project|utility|analysis"
+#   stata_command   = "stacy_cmdname"
+#   long_description = """
+#   Multi-line description for documentation. Explains what the command does,
+#   why you'd use it, and any important behavior notes.
+#   """
+#   see_also = ["run", "bench", "../reference/exit-codes.md"]
+#
+# Examples use TOML array of tables:
+#   [[commands.cmdname.examples]]
+#   title = "Example Title"
+#   description = "What this example demonstrates"
+#   commands = ["stacy run analysis.do", "echo $?"]
+#   output = """
+#   Expected output here
+#   """
+#
+# =============================================================================
+
+# =============================================================================
+# COMMAND: run
+# =============================================================================
+
+[commands.run]
+description = "Execute a Stata script with error detection"
+category = "execution"
+stata_command = "stacy_run"
+long_description = """
+Executes Stata scripts in batch mode and parses log files for errors. Unlike
+`stata-mp -b`, returns proper exit codes that reflect whether the script
+succeeded or failed—enabling integration with Make, Snakemake, and CI/CD.
+
+The command runs Stata with `-b -q`, parses the log for error patterns, and
+returns an appropriate exit code (0 for success, 1-10 for various errors).
+
+By default, clean output is shown after execution (boilerplate stripped). On
+failure, error details with official Stata documentation links and the log file
+path are displayed. Use `-v` to stream the raw log in real-time instead, or
+`-q` to suppress all output.
+
+Multiple scripts can be run sequentially (default, fail-fast) or in parallel
+(`--parallel`). Parallel mode runs all scripts regardless of failures.
+
+For interactive use where you want to quickly check a result, see `stacy eval`.
+"""
+see_also = ["./eval.md", "bench", "task", "../reference/exit-codes.md", "../guides/build-integration.md"]
+
+[commands.run.args]
+script = { type = "path", positional = true, required_unless = "code", description = "Script to execute" }
+code = { type = "string", short = "c", conflicts_with = "script", description = "Inline Stata code", stata_option = "Code(string)" }
+directory = { type = "path", short = "C", conflicts_with = "cd", description = "Run Stata in this directory", stata_option = "Directory(string)" }
+cd = { type = "bool", long = "cd", conflicts_with = "directory", description = "Change to script's parent directory" }
+quiet = { type = "bool", short = "q", description = "Suppress output", stata_option = "Quietly" }
+verbose = { type = "bool", description = "Extra output", stata_option = "Verbose" }
+json = { type = "bool", description = "JSON output (internal)" }
+profile = { type = "bool", description = "Include execution metrics", stata_option = "Profile" }
+trace = { type = "int", long = "trace", description = "Enable execution tracing at given depth" }
+
+[commands.run.returns]
+# Scalars (numeric values)
+success = { type = "bool", json_path = "success", stata_type = "scalar", description = "Whether script succeeded (1=yes, 0=no)" }
+exit_code = { type = "int", json_path = "exit_code", stata_type = "scalar", description = "Exit code (0=success)" }
+duration_secs = { type = "float", json_path = "duration_secs", stata_type = "scalar", description = "Execution time in seconds" }
+error_count = { type = "int", json_path = "errors", stata_type = "scalar", array_handling = "count", description = "Number of errors detected" }
+
+# Locals (string values)
+source = { type = "string", json_path = "source", stata_type = "local", description = "'file' or 'inline'" }
+script = { type = "path", json_path = "script", stata_type = "local", description = "Path to script" }
+log_file = { type = "path", json_path = "log_file", stata_type = "local", description = "Path to log file" }
+
+[commands.run.exit_codes]
+0 = "Success"
+1 = "Stata error (r() code detected)"
+2 = "Syntax error"
+3 = "File error (not found, permission denied)"
+4 = "Memory error"
+5 = "Internal stacy error"
+10 = "Environment error (Stata not found)"
+
+[[commands.run.examples]]
+title = "Run a script"
+commands = ["stacy run analysis.do"]
+
+[[commands.run.examples]]
+title = "Multiple scripts (sequential)"
+description = "Runs in order, stops on first failure"
+commands = ["stacy run clean.do analyze.do report.do"]
+
+[[commands.run.examples]]
+title = "Parallel execution"
+description = "Run all scripts concurrently for faster execution"
+commands = ["stacy run --parallel *.do", "stacy run --parallel -j4 a.do b.do c.do"]
+
+[[commands.run.examples]]
+title = "Inline code"
+description = "Execute Stata code without creating a file"
+commands = ["stacy run -c 'display 2+2'", "stacy run -c 'sysuse auto, clear\nsummarize price'"]
+
+[[commands.run.examples]]
+title = "Working directory"
+description = "Run in a specific directory (script paths resolved before cd)"
+commands = ["stacy run -C reports/pilot/ table.do", "stacy run --cd reports/pilot/table.do"]
+
+[[commands.run.examples]]
+title = "Verbose output"
+description = "Stream log file in real-time"
+commands = ["stacy run -v long_analysis.do"]
+
+[[commands.run.examples]]
+title = "JSON output"
+description = "Machine-readable output for CI/CD"
+commands = ["stacy run --format json analysis.do"]
+
+[[commands.run.examples]]
+title = "Execution tracing"
+description = "Enable Stata's set trace on for debugging"
+commands = ["stt run --trace 2 analysis.do", "stt run --trace 2 -v analysis.do"]
+
+
+# =============================================================================
+# COMMAND: doctor
+# =============================================================================
+
+[commands.doctor]
+description = "Run system diagnostics"
+category = "utility"
+stata_command = "stacy_doctor"
+long_description = """
+Checks your system configuration and reports any issues. Verifies Stata
+installation, project detection, and write permissions. Run this first
+when troubleshooting.
+"""
+see_also = ["env"]
+
+[commands.doctor.args]
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.doctor.returns]
+ready = { type = "bool", json_path = "ready", stata_type = "scalar", description = "System is ready to use (1=yes, 0=no)" }
+passed = { type = "int", json_path = "summary.passed", stata_type = "scalar", description = "Number of checks passed" }
+warnings = { type = "int", json_path = "summary.warnings", stata_type = "scalar", description = "Number of warnings" }
+failed = { type = "int", json_path = "summary.failed", stata_type = "scalar", description = "Number of failed checks" }
+check_count = { type = "int", json_path = "checks", stata_type = "scalar", array_handling = "count", description = "Total number of checks" }
+
+[commands.doctor.exit_codes]
+0 = "All checks passed"
+1 = "One or more checks failed"
+
+[[commands.doctor.examples]]
+title = "Run diagnostics"
+commands = ["stacy doctor"]
+
+
+# =============================================================================
+# COMMAND: env
+# =============================================================================
+
+[commands.env]
+description = "Show environment configuration"
+category = "utility"
+stata_command = "stacy_env"
+long_description = """
+Displays the current stacy configuration: Stata binary location, project root,
+path settings, and adopath order. Useful for debugging configuration issues.
+"""
+see_also = ["doctor"]
+
+[commands.env.args]
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.env.returns]
+# Scalars
+has_config = { type = "bool", json_path = "project.has_config", stata_type = "scalar", description = "stacy.toml exists (1=yes, 0=no)" }
+show_progress = { type = "bool", json_path = "settings.show_progress", stata_type = "scalar", description = "Progress shown (1=yes, 0=no)" }
+adopath_count = { type = "int", json_path = "adopath", stata_type = "scalar", array_handling = "count", description = "Number of adopath entries" }
+
+# Locals
+stata_binary = { type = "path", json_path = "stata.binary", stata_type = "local", description = "Path to Stata binary" }
+stata_source = { type = "string", json_path = "stata.source", stata_type = "local", description = "How binary was detected" }
+project_root = { type = "path", json_path = "project.root", stata_type = "local", description = "Project root directory" }
+cache_dir = { type = "path", json_path = "paths.cache", stata_type = "local", description = "Global package cache directory" }
+log_dir = { type = "path", json_path = "paths.logs", stata_type = "local", description = "Project log directory" }
+
+[commands.env.exit_codes]
+0 = "Success"
+10 = "Environment error (Stata not found)"
+
+[[commands.env.examples]]
+title = "Show environment"
+commands = ["stacy env"]
+
+
+# =============================================================================
+# COMMAND: explain
+# =============================================================================
+
+[commands.explain]
+description = "Look up Stata error code details"
+category = "utility"
+stata_command = "stacy_explain"
+long_description = """
+Displays detailed information about Stata error codes. Includes the error
+name, category, full description from the Stata Programming Manual, and
+link to official documentation. Useful for understanding r() return codes.
+"""
+see_also = ["run", "../reference/exit-codes.md"]
+
+[commands.explain.args]
+code = { type = "string", positional = true, required = true, description = "Error code (e.g., 199 or r(199))" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.explain.returns]
+code = { type = "int", json_path = "code", stata_type = "scalar", description = "Error code number" }
+name = { type = "string", json_path = "name", stata_type = "local", description = "Short error name" }
+category = { type = "string", json_path = "category", stata_type = "local", description = "Error category" }
+description = { type = "string", json_path = "description", stata_type = "local", description = "Full error description" }
+url = { type = "string", json_path = "url", stata_type = "local", description = "Link to Stata documentation" }
+
+[commands.explain.exit_codes]
+0 = "Error code found"
+1 = "Unknown error code"
+
+[[commands.explain.examples]]
+title = "Look up error code"
+commands = ["stacy explain 199"]
+
+[[commands.explain.examples]]
+title = "Using r() syntax"
+commands = ["stacy explain r(601)"]
+
+
+# =============================================================================
+# COMMAND: install
+# =============================================================================
+
+[commands.install]
+description = "Install packages from lockfile or SSC/GitHub"
+category = "packages"
+stata_command = "stacy_install"
+long_description = """
+Installs packages defined in `stacy.lock` (or `stacy.toml` if no lockfile exists).
+This ensures reproducible environments by installing exact versions from the
+lockfile. Can also install individual packages directly from SSC or GitHub.
+"""
+see_also = ["add", "lock", "list"]
+
+[commands.install.args]
+package = { type = "string", positional = true, description = "Package name (optional)" }
+from = { type = "string", description = "Source: ssc or github:user/repo", stata_option = "From(string)" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.install.returns]
+# Scalars
+installed = { type = "int", json_path = "summary.installed", stata_type = "scalar", description = "Number of newly installed packages" }
+already_installed = { type = "int", json_path = "summary.already_installed", stata_type = "scalar", description = "Number already installed" }
+skipped = { type = "int", json_path = "summary.skipped", stata_type = "scalar", description = "Number skipped (errors)" }
+total = { type = "int", json_path = "summary.total", stata_type = "scalar", description = "Total packages processed" }
+package_count = { type = "int", json_path = "packages", stata_type = "scalar", array_handling = "count", description = "Same as total" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
+
+[commands.install.exit_codes]
+0 = "Success"
+1 = "Installation failed"
+3 = "Package not found"
+
+[[commands.install.examples]]
+title = "Install from lockfile"
+description = "Install all packages at locked versions"
+commands = ["stacy install"]
+
+[[commands.install.examples]]
+title = "Install specific package"
+commands = ["stacy install estout"]
+
+
+# =============================================================================
+# COMMAND: deps
+# =============================================================================
+
+[commands.deps]
+description = "Show dependency tree for Stata scripts"
+category = "analysis"
+stata_command = "stacy_deps"
+long_description = """
+Analyzes a Stata script to find all files it depends on (via `do`, `run`,
+`include`). Shows a tree view of the dependency graph, detects circular
+dependencies, and identifies missing files.
+"""
+see_also = ["run"]
+
+[commands.deps.args]
+script = { type = "path", positional = true, required = true, description = "Script to analyze" }
+flat = { type = "bool", description = "Show flat list instead of tree", stata_option = "Flat" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.deps.returns]
+# Scalars
+unique_count = { type = "int", json_path = "summary.unique_count", stata_type = "scalar", description = "Number of unique dependencies" }
+has_circular = { type = "bool", json_path = "summary.has_circular", stata_type = "scalar", description = "Circular deps found (1=yes, 0=no)" }
+has_missing = { type = "bool", json_path = "summary.has_missing", stata_type = "scalar", description = "Missing files found (1=yes, 0=no)" }
+circular_count = { type = "int", json_path = "summary.circular_paths", stata_type = "scalar", array_handling = "count", description = "Number of circular dependency paths" }
+missing_count = { type = "int", json_path = "summary.missing_paths", stata_type = "scalar", array_handling = "count", description = "Number of missing files" }
+
+# Locals
+script = { type = "path", json_path = "script", stata_type = "local", description = "Path to analyzed script" }
+
+[commands.deps.exit_codes]
+0 = "Analysis complete"
+3 = "Script not found"
+
+[[commands.deps.examples]]
+title = "Show dependency tree"
+commands = ["stacy deps main.do"]
+
+[[commands.deps.examples]]
+title = "Show flat list"
+commands = ["stacy deps --flat main.do"]
+
+
+# =============================================================================
+# COMMAND: init
+# =============================================================================
+
+[commands.init]
+description = "Initialize new stacy project"
+category = "project"
+stata_command = "stacy_init"
+long_description = """
+Creates a new stacy project with standard directory structure and configuration.
+This sets up `stacy.toml` for project settings and `ado/` for local packages.
+
+Run this in an existing directory or specify a path to create a new one.
+"""
+see_also = ["add", "install", "../configuration/project.md"]
+
+[commands.init.args]
+path = { type = "path", positional = true, description = "Project directory (default: current)" }
+name = { type = "string", description = "Project name", stata_option = "Name(string)" }
+force = { type = "bool", description = "Overwrite existing files", stata_option = "Force" }
+yes = { type = "bool", description = "Skip interactive prompts (always set in Stata)" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.init.returns]
+# Scalars
+created_count = { type = "int", json_path = "created", stata_type = "scalar", array_handling = "count", description = "Number of files/directories created" }
+package_count = { type = "int", json_path = "packages", stata_type = "scalar", array_handling = "count", description = "Number of packages specified" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
+path = { type = "path", json_path = "path", stata_type = "local", description = "Path where project was created" }
+
+[commands.init.exit_codes]
+0 = "Project created successfully"
+1 = "Initialization failed"
+
+[[commands.init.examples]]
+title = "Initialize in current directory"
+commands = ["stacy init"]
+
+[[commands.init.examples]]
+title = "Initialize in new directory"
+commands = ["stacy init my-project"]
+
+[[commands.init.examples]]
+title = "Initialize with project name"
+commands = ["stacy init --name \"My Analysis\""]
+
+
+# =============================================================================
+# COMMAND: add
+# =============================================================================
+
+[commands.add]
+description = "Add packages to project"
+category = "packages"
+stata_command = "stacy_add"
+long_description = """
+Adds packages to your project's `stacy.toml` and installs them. Supports SSC
+(default) and GitHub sources. Packages are recorded with versions for
+reproducible installs via `stacy install`.
+"""
+see_also = ["remove", "install", "update"]
+
+[commands.add.args]
+packages = { type = "string_list", positional = true, required = true, description = "Package names to add" }
+source = { type = "string", description = "Package source: ssc or github:user/repo[@ref]", stata_option = "Source(string)" }
+dev = { type = "bool", description = "Add as development dependency", stata_option = "DEV" }
+test = { type = "bool", description = "Add as test dependency", stata_option = "TEST" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.add.returns]
+# Scalars
+added = { type = "int", json_path = "summary.added", stata_type = "scalar", description = "Number of packages added" }
+skipped = { type = "int", json_path = "summary.skipped", stata_type = "scalar", description = "Number of packages skipped (already present)" }
+failed = { type = "int", json_path = "summary.failed", stata_type = "scalar", description = "Number of packages that failed" }
+total = { type = "int", json_path = "summary.total", stata_type = "scalar", description = "Total packages processed" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success', 'partial', or 'error'" }
+group = { type = "string", json_path = "summary.group", stata_type = "local", description = "Dependency group: 'production', 'dev', or 'test'" }
+
+[commands.add.exit_codes]
+0 = "Success"
+1 = "All packages failed to add"
+
+[[commands.add.examples]]
+title = "Add from SSC"
+commands = ["stacy add estout", "stacy add estout reghdfe"]
+
+[[commands.add.examples]]
+title = "Add from GitHub"
+commands = ["stacy add --source github:sergiocorreia/ftools ftools"]
+
+[[commands.add.examples]]
+title = "Add as dev dependency"
+commands = ["stacy add --dev assert"]
+
+
+# =============================================================================
+# COMMAND: remove
+# =============================================================================
+
+[commands.remove]
+description = "Remove packages from project"
+category = "packages"
+stata_command = "stacy_remove"
+long_description = """
+Removes packages from `stacy.toml` and deletes them from the local `ado/`
+directory. Does not affect globally installed packages.
+"""
+see_also = ["add", "list"]
+
+[commands.remove.args]
+packages = { type = "string_list", positional = true, required = true, description = "Package names to remove" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.remove.returns]
+# Scalars
+removed = { type = "int", json_path = "summary.removed", stata_type = "scalar", description = "Number of packages removed" }
+not_found = { type = "int", json_path = "summary.not_found", stata_type = "scalar", description = "Number of packages not found" }
+total = { type = "int", json_path = "summary.total", stata_type = "scalar", description = "Total packages processed" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
+
+[commands.remove.exit_codes]
+0 = "Success"
+1 = "No packages removed"
+
+[[commands.remove.examples]]
+title = "Remove a package"
+commands = ["stacy remove estout"]
+
+[[commands.remove.examples]]
+title = "Remove multiple packages"
+commands = ["stacy remove estout reghdfe"]
+
+
+# =============================================================================
+# COMMAND: update
+# =============================================================================
+
+[commands.update]
+description = "Update packages to latest versions"
+category = "packages"
+stata_command = "stacy_update"
+long_description = """
+Checks for newer versions of installed packages and updates them. Updates both
+`stacy.toml` and `stacy.lock` to reflect new versions. Use `--dry-run` to preview
+changes without applying them.
+"""
+see_also = ["outdated", "install", "lock"]
+
+[commands.update.args]
+packages = { type = "string_list", positional = true, description = "Package names to update (default: all)" }
+dry_run = { type = "bool", description = "Show what would be updated without making changes", stata_option = "DRYrun" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.update.returns]
+# Scalars
+updated = { type = "int", json_path = "summary.updated", stata_type = "scalar", description = "Number of packages updated" }
+updates_available = { type = "int", json_path = "summary.updates_available", stata_type = "scalar", description = "Number of packages with updates available" }
+failed = { type = "int", json_path = "summary.failed", stata_type = "scalar", description = "Number of packages that failed to update" }
+total = { type = "int", json_path = "summary.total", stata_type = "scalar", description = "Total packages checked" }
+dry_run = { type = "bool", json_path = "dry_run", stata_type = "scalar", description = "Whether this was a dry run (1=yes, 0=no)" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success', 'partial', or 'error'" }
+
+[commands.update.exit_codes]
+0 = "Success"
+1 = "All updates failed"
+
+[[commands.update.examples]]
+title = "Update all packages"
+commands = ["stacy update"]
+
+[[commands.update.examples]]
+title = "Update specific package"
+commands = ["stacy update estout"]
+
+[[commands.update.examples]]
+title = "Preview updates"
+commands = ["stacy update --dry-run"]
+
+
+# =============================================================================
+# COMMAND: list
+# =============================================================================
+
+[commands.list]
+description = "List installed packages"
+category = "packages"
+stata_command = "stacy_list"
+long_description = """
+Shows all packages installed in the current project with their versions and
+sources. Use `--tree` to group by dependency type (production, dev, test).
+"""
+see_also = ["outdated", "add"]
+
+[commands.list.args]
+tree = { type = "bool", description = "Group packages by dependency type", stata_option = "Tree" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.list.returns]
+# Scalars
+package_count = { type = "int", json_path = "package_count", stata_type = "scalar", description = "Number of packages" }
+
+# Locals (comma-separated lists)
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
+package_names = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_names", description = "Comma-separated package names" }
+package_versions = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_versions", description = "Comma-separated package versions" }
+package_sources = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_sources", description = "Comma-separated package sources" }
+package_groups = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_groups", description = "Comma-separated package groups" }
+
+[commands.list.exit_codes]
+0 = "Success"
+
+[[commands.list.examples]]
+title = "List packages"
+commands = ["stacy list"]
+
+[[commands.list.examples]]
+title = "List by dependency group"
+commands = ["stacy list --tree"]
+
+
+# =============================================================================
+# COMMAND: outdated
+# =============================================================================
+
+[commands.outdated]
+description = "Check for package updates"
+category = "packages"
+stata_command = "stacy_outdated"
+long_description = """
+Compares installed package versions against the latest available from their
+sources. Shows which packages have updates available without modifying anything.
+"""
+see_also = ["update", "list"]
+
+[commands.outdated.args]
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.outdated.returns]
+# Scalars
+outdated_count = { type = "int", json_path = "outdated_count", stata_type = "scalar", description = "Number of outdated packages" }
+total_count = { type = "int", json_path = "total_count", stata_type = "scalar", description = "Total packages checked" }
+
+# Locals (comma-separated lists)
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
+outdated_names = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_names", description = "Comma-separated outdated package names" }
+outdated_currents = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_currents", description = "Comma-separated current versions" }
+outdated_latests = { type = "string", json_path = "packages", stata_type = "local", array_handling = "join_latests", description = "Comma-separated latest versions" }
+
+[commands.outdated.exit_codes]
+0 = "Success"
+
+[[commands.outdated.examples]]
+title = "Check for updates"
+commands = ["stacy outdated"]
+
+
+# =============================================================================
+# COMMAND: lock
+# =============================================================================
+
+[commands.lock]
+description = "Generate or verify lockfile"
+category = "packages"
+stata_command = "stacy_lock"
+long_description = """
+Generates `stacy.lock` from `stacy.toml`, recording exact versions of all packages.
+The lockfile ensures reproducible installs across machines. Use `--check` in CI
+to verify the lockfile is up-to-date.
+"""
+see_also = ["install", "update", "../configuration/lockfile.md"]
+
+[commands.lock.args]
+check = { type = "bool", description = "Verify lockfile matches stacy.toml without updating", stata_option = "CHECK" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.lock.returns]
+# Scalars
+package_count = { type = "int", json_path = "package_count", stata_type = "scalar", description = "Number of packages in lockfile" }
+updated = { type = "bool", json_path = "updated", stata_type = "scalar", description = "Whether lockfile was updated (1=yes, 0=no)" }
+in_sync = { type = "bool", json_path = "in_sync", stata_type = "scalar", description = "Whether lockfile is in sync (1=yes, 0=no)" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success', 'updated', or 'error'" }
+
+[commands.lock.exit_codes]
+0 = "Success / in sync"
+1 = "Out of sync (with --check)"
+
+[[commands.lock.examples]]
+title = "Generate lockfile"
+commands = ["stacy lock"]
+
+[[commands.lock.examples]]
+title = "Verify lockfile (for CI)"
+commands = ["stacy lock --check"]
+
+
+# =============================================================================
+# COMMAND: bench
+# =============================================================================
+
+[commands.bench]
+description = "Benchmark script execution"
+category = "execution"
+stata_command = "stacy_bench"
+long_description = """
+Runs a Stata script multiple times and reports timing statistics (mean, median,
+min, max, stddev). Includes warmup runs by default to account for JIT and
+caching effects.
+"""
+see_also = ["run"]
+
+[commands.bench.args]
+script = { type = "path", positional = true, required = true, description = "Stata script to benchmark" }
+runs = { type = "int", short = "n", description = "Number of measured runs", stata_option = "Runs(integer)" }
+warmup = { type = "int", short = "w", description = "Number of warmup runs", stata_option = "Warmup(integer)" }
+no_warmup = { type = "bool", description = "Skip warmup runs", stata_option = "NOWarmup" }
+quiet = { type = "bool", short = "q", description = "Suppress progress output", stata_option = "Quiet" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.bench.returns]
+# Scalars
+measured_runs = { type = "int", json_path = "measured_runs", stata_type = "scalar", description = "Number of measured runs" }
+warmup_runs = { type = "int", json_path = "warmup_runs", stata_type = "scalar", description = "Number of warmup runs" }
+mean_secs = { type = "float", json_path = "mean_secs", stata_type = "scalar", description = "Mean execution time in seconds" }
+median_secs = { type = "float", json_path = "median_secs", stata_type = "scalar", description = "Median execution time in seconds" }
+min_secs = { type = "float", json_path = "min_secs", stata_type = "scalar", description = "Minimum execution time in seconds" }
+max_secs = { type = "float", json_path = "max_secs", stata_type = "scalar", description = "Maximum execution time in seconds" }
+stddev_secs = { type = "float", json_path = "stddev_secs", stata_type = "scalar", description = "Standard deviation in seconds" }
+success = { type = "bool", json_path = "success", stata_type = "scalar", description = "Whether all runs succeeded (1=yes, 0=no)" }
+
+# Locals
+script = { type = "path", json_path = "script", stata_type = "local", description = "Path to benchmarked script" }
+
+[commands.bench.exit_codes]
+0 = "Success"
+1 = "Script failed during benchmark"
+3 = "Script not found"
+
+[[commands.bench.examples]]
+title = "Benchmark a script"
+commands = ["stacy bench analysis.do"]
+
+[[commands.bench.examples]]
+title = "Custom run count"
+commands = ["stacy bench -n 20 analysis.do"]
+
+
+# =============================================================================
+# COMMAND: task
+# =============================================================================
+
+[commands.task]
+description = "Run tasks from stacy.toml"
+category = "execution"
+stata_command = "stacy_task"
+long_description = """
+Runs named tasks defined in `stacy.toml`. Tasks are like npm scripts—define
+sequences of commands once and run them by name. Use `--list` to see available
+tasks.
+"""
+see_also = ["run", "../configuration/project.md"]
+
+[commands.task.args]
+task = { type = "string", positional = true, description = "Task name to run" }
+list = { type = "bool", description = "List available tasks", stata_option = "LIST" }
+frozen = { type = "bool", description = "Fail if lockfile doesn't match stacy.toml", stata_option = "FROZEN" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.task.returns]
+# Scalars (for task run)
+success = { type = "bool", json_path = "success", stata_type = "scalar", description = "Whether task succeeded (1=yes, 0=no)" }
+exit_code = { type = "int", json_path = "exit_code", stata_type = "scalar", description = "Exit code (0=success)" }
+duration_secs = { type = "float", json_path = "duration_secs", stata_type = "scalar", description = "Total execution time in seconds" }
+script_count = { type = "int", json_path = "script_count", stata_type = "scalar", description = "Number of scripts executed" }
+success_count = { type = "int", json_path = "success_count", stata_type = "scalar", description = "Number of successful scripts" }
+failed_count = { type = "int", json_path = "failed_count", stata_type = "scalar", description = "Number of failed scripts" }
+
+# Scalars (for --list mode)
+task_count = { type = "int", json_path = "task_count", stata_type = "scalar", description = "Number of tasks defined" }
+
+# Locals
+task_name = { type = "string", json_path = "task_name", stata_type = "local", description = "Name of the task" }
+task_names = { type = "string", json_path = "tasks", stata_type = "local", array_handling = "join_names", description = "Comma-separated task names (for --list)" }
+
+[commands.task.exit_codes]
+0 = "Success"
+1 = "Task failed"
+5 = "Task not found"
+
+[[commands.task.examples]]
+title = "Run a task"
+commands = ["stacy task build"]
+
+[[commands.task.examples]]
+title = "List available tasks"
+commands = ["stacy task --list"]
+
+
+# =============================================================================
+# COMMAND: test
+# =============================================================================
+
+[commands.test]
+description = "Run tests"
+category = "execution"
+stata_command = "stacy_test"
+long_description = """
+Discovers and runs test scripts from the `test/` directory. Tests are Stata
+scripts that use assertion commands. Supports filtering, parallel execution,
+and verbose output for debugging failures.
+"""
+see_also = ["run"]
+
+[commands.test.args]
+test = { type = "string", positional = true, description = "Specific test to run" }
+filter = { type = "string", short = "f", description = "Filter tests by pattern", stata_option = "Filter(string)" }
+parallel = { type = "bool", description = "Run tests in parallel", stata_option = "PARALLEL" }
+list = { type = "bool", description = "List tests without running", stata_option = "LIST" }
+quiet = { type = "bool", short = "q", description = "Suppress progress output", stata_option = "Quiet" }
+verbose = { type = "bool", short = "V", description = "Show full log context for failures", stata_option = "Verbose" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.test.returns]
+# Scalars
+success = { type = "bool", json_path = "success", stata_type = "scalar", description = "Whether all tests passed (1=yes, 0=no)" }
+test_count = { type = "int", json_path = "test_count", stata_type = "scalar", description = "Total number of tests" }
+passed = { type = "int", json_path = "passed", stata_type = "scalar", description = "Number of passed tests" }
+failed = { type = "int", json_path = "failed", stata_type = "scalar", description = "Number of failed tests" }
+skipped = { type = "int", json_path = "skipped", stata_type = "scalar", description = "Number of skipped tests" }
+duration_secs = { type = "float", json_path = "duration_secs", stata_type = "scalar", description = "Total execution time in seconds" }
+
+# Locals (for --list mode)
+test_names = { type = "string", json_path = "tests", stata_type = "local", array_handling = "join_names", description = "Comma-separated test names (for --list)" }
+
+[commands.test.exit_codes]
+0 = "All tests passed"
+1 = "One or more tests failed"
+5 = "Test not found"
+
+[[commands.test.examples]]
+title = "Run all tests"
+commands = ["stacy test"]
+
+[[commands.test.examples]]
+title = "Run specific test"
+commands = ["stacy test test_regression"]
+
+[[commands.test.examples]]
+title = "Filter tests"
+commands = ["stacy test -f 'regression*'"]
+
+
+# =============================================================================
+# COMMAND: cache (subcommands)
+# =============================================================================
+
+[commands.cache_info]
+description = "Show cache statistics"
+category = "utility"
+stata_command = "stacy_cache_info"
+long_description = """
+Displays information about the build cache used by `stacy run --cache`. Shows
+number of cached entries and approximate size. The cache stores results to
+skip re-execution of unchanged scripts.
+
+Use `stacy cache clean` to remove old entries.
+"""
+see_also = ["run"]
+
+[commands.cache_info.args]
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.cache_info.returns]
+# Scalars
+entry_count = { type = "int", json_path = "entry_count", stata_type = "scalar", description = "Number of cached entries" }
+size_bytes = { type = "int", json_path = "size_bytes", stata_type = "scalar", description = "Approximate size in bytes" }
+cache_exists = { type = "bool", json_path = "cache_exists", stata_type = "scalar", description = "Whether cache file exists (1=yes, 0=no)" }
+
+# Locals
+cache_path = { type = "path", json_path = "cache_path", stata_type = "local", description = "Path to cache file" }
+
+[commands.cache_info.exit_codes]
+0 = "Success"
+10 = "Not in project"
+
+[[commands.cache_info.examples]]
+title = "Show cache info"
+commands = ["stacy cache info"]
+
+[[commands.cache_info.examples]]
+title = "Clean old entries"
+commands = ["stacy cache clean", "stacy cache clean --older-than 7"]
+
+
+[commands.cache_clean]
+description = "Remove cached entries"
+category = "utility"
+stata_command = "stacy_cache_clean"
+
+[commands.cache_clean.args]
+older_than = { type = "int", description = "Remove entries older than N days", stata_option = "OLDERthan(integer)" }
+quiet = { type = "bool", short = "q", description = "Suppress output", stata_option = "Quiet" }
+json = { type = "bool", description = "JSON output (internal)" }
+
+[commands.cache_clean.returns]
+# Scalars
+entries_removed = { type = "int", json_path = "entries_removed", stata_type = "scalar", description = "Number of entries removed" }
+entries_remaining = { type = "int", json_path = "entries_remaining", stata_type = "scalar", description = "Number of entries remaining" }
+
+# Locals
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
+
+[commands.cache_clean.exit_codes]
+0 = "Success"
+10 = "Not in project"
+
+
+# =============================================================================
+# TYPE MAPPING REFERENCE
+# =============================================================================
+
+[type_mapping]
+# How JSON types map to Stata r() return types
+#
+# | JSON type | Stata r() type | Notes                           |
+# |-----------|---------------|---------------------------------|
+# | bool      | scalar (0/1)  | true=1, false=0                |
+# | int       | scalar        | Direct numeric                  |
+# | float     | scalar        | Direct numeric                  |
+# | string    | local         | Macro value                     |
+# | path      | local         | Same as string                  |
+# | array     | scalar        | Only count stored (array_handling) |
+# | object    | N/A           | Nested paths like "summary.passed" |
+
+# =============================================================================
+# GLOBAL EXIT CODES
+# =============================================================================
+# These are stable and will not change meaning in future versions.
+# New categories may be added with codes 11+.
+
+[exit_codes]
+0 = { name = "Success", description = "Operation completed successfully" }
+1 = { name = "Stata Error", description = "Stata r() code detected in log", r_codes = "most r() codes not in other categories" }
+2 = { name = "Syntax Error", description = "Invalid Stata syntax", r_codes = "r(198), r(199)" }
+3 = { name = "File Error", description = "File not found, permission denied, data errors", r_codes = "r(601), r(603), r(610), r(639), r(2000-2999)" }
+4 = { name = "Memory Error", description = "Insufficient memory", r_codes = "r(950)" }
+5 = { name = "Internal Error", description = "stacy itself failed (not Stata)" }
+10 = { name = "Environment Error", description = "Stata not found or configuration invalid" }

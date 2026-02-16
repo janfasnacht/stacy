@@ -1,0 +1,20 @@
+v 3
+d stacy - Modern Stata Workflow Tool
+d
+d Author: Jan Fasnacht
+d Support: https://github.com/janfasnacht/stacy
+d
+d stacy provides reproducible Stata execution with proper error detection,
+d dependency management, and modern build system integration.
+d
+d Features:
+d   - Proper error detection and exit codes
+d   - Dependency analysis for Stata scripts
+d   - Package management with lockfile support
+d   - Project initialization and configuration
+d
+d Requires: Stata 14.0 or higher
+d
+d Distribution-Date: 20260118
+d
+p stacy Modern Stata Workflow Tool

@@ -1,0 +1,6 @@
+# stacy lockfile - auto-generated, do not edit manually
+# This is a test fixture with no packages
+
+version = "1"
+
+[packages]

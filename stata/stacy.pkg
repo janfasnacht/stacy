@@ -1,0 +1,68 @@
+v 3
+d stacy: Modern Stata Workflow Tool
+d
+d stacy provides reproducible Stata execution with proper error detection,
+d dependency management, and modern build system integration.
+d
+d Author: Jan Fasnacht
+d Support: https://github.com/janfasnacht/stacy
+d
+d Requires: Stata 14.0 or higher
+d
+d Distribution-Date: 20260118
+d
+
+* Core utilities (internal)
+f _stacy_find_binary.ado
+f _stacy_exec.ado
+f _stacy_parse_json.ado
+f _stacy_extract_bool.ado
+f _stacy_extract_number.ado
+f _stacy_extract_string.ado
+f _stacy_count_array.ado
+
+* Main entry point
+f stacy.ado
+f stacy.sthlp
+
+* Command wrappers
+f stacy_add.ado
+f stacy_add.sthlp
+f stacy_bench.ado
+f stacy_bench.sthlp
+f stacy_cache_clean.ado
+f stacy_cache_clean.sthlp
+f stacy_cache_info.ado
+f stacy_cache_info.sthlp
+f stacy_deps.ado
+f stacy_deps.sthlp
+f stacy_doctor.ado
+f stacy_doctor.sthlp
+f stacy_env.ado
+f stacy_env.sthlp
+f stacy_explain.ado
+f stacy_explain.sthlp
+f stacy_init.ado
+f stacy_init.sthlp
+f stacy_install.ado
+f stacy_install.sthlp
+f stacy_list.ado
+f stacy_list.sthlp
+f stacy_lock.ado
+f stacy_lock.sthlp
+f stacy_outdated.ado
+f stacy_outdated.sthlp
+f stacy_remove.ado
+f stacy_remove.sthlp
+f stacy_run.ado
+f stacy_run.sthlp
+f stacy_task.ado
+f stacy_task.sthlp
+f stacy_test.ado
+f stacy_test.sthlp
+f stacy_update.ado
+f stacy_update.sthlp
+
+* Setup/installer
+f stacy_setup.ado
+f stacy_setup.sthlp

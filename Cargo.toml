@@ -1,0 +1,94 @@
+[workspace]
+members = [".", "xtask"]
+
+[package]
+name = "stata-cli"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.87"
+authors = ["Jan Fasnacht <jfasnacht@uchicago.edu>"]
+description = "Modern Stata workflow tool for reproducible research"
+license = "MIT"
+repository = "https://github.com/janfasnacht/stacy"
+homepage = "https://github.com/janfasnacht/stacy"
+documentation = "https://stacy.janfasnacht.com"
+readme = "README.md"
+keywords = ["stata", "reproducibility", "workflow", "statistics"]
+categories = ["command-line-utilities", "development-tools"]
+exclude = [
+    "dev/",
+    "external/",
+    "tests/log-analysis/",
+    "examples/",
+    "*.log",
+    ".github/",
+]
+
+[[bin]]
+name = "stacy"
+path = "src/main.rs"
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
+[dependencies]
+# CLI parsing
+clap = { version = "4.5", features = ["derive", "cargo"] }
+
+# Configuration and serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Regex for error detection
+regex = "1.10"
+lazy_static = "1.4"
+
+# Terminal output
+colored = "2.1"
+
+# File system operations
+walkdir = "2.4"
+
+# Progress indicators
+indicatif = "0.17"
+
+# HTTP client for package downloads
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+
+# Cryptographic hashing for checksums
+sha2 = "0.10"
+dirs = "6.0.0"
+dialoguer = "0.12.0"
+
+# Temporary file management (for inline code execution)
+tempfile = "3.8"
+
+# Unix process management
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+# Testing
+assert_cmd = "2.0"      # CLI testing
+predicates = "3.0"      # Test assertions
+serial_test = "3.0"     # Sequential test execution
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[profile.release]
+# Optimize for size and speed
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+# Fast compilation for development
+opt-level = 0
