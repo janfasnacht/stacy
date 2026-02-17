@@ -1,6 +1,6 @@
 *! stacy_env.ado - Show environment configuration
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.0.1
+*! Version: 1.0.2
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 

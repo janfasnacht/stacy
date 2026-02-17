@@ -3,7 +3,7 @@ members = [".", "xtask"]
 
 [package]
 name = "stata-cli"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2021"
 rust-version = "1.87"
 authors = ["Jan Fasnacht <jfasnacht@uchicago.edu>"]

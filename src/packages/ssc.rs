@@ -13,7 +13,11 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Base URL for SSC archive (primary)
-const SSC_BASE_URL: &str = "https://fmwww.bc.edu/repec/bocode";
+///
+/// Must use HTTP, not HTTPS. The SSC server at Boston College (fmwww.bc.edu)
+/// does not support TLS — port 443 serves plain HTTP, causing TLS handshake
+/// failures with any HTTPS client. Stata's own `ssc install` uses plain HTTP.
+const SSC_BASE_URL: &str = "http://fmwww.bc.edu/repec/bocode";
 
 /// GitHub mirror URL (fallback)
 /// See: <https://github.com/labordynamicsinstitute/ssc-mirror>
@@ -75,7 +79,7 @@ impl SscDownloader {
     /// Get the SSC URL for a package (primary server)
     ///
     /// Packages are organized by first letter:
-    /// - `rdrobust` -> `https://fmwww.bc.edu/repec/bocode/r/`
+    /// - `rdrobust` -> `http://fmwww.bc.edu/repec/bocode/r/`
     pub fn get_package_url(name: &str) -> String {
         let first_char = name
             .chars()
@@ -362,15 +366,39 @@ mod tests {
     fn test_get_package_url() {
         assert_eq!(
             SscDownloader::get_package_url("rdrobust"),
-            "https://fmwww.bc.edu/repec/bocode/r/"
+            "http://fmwww.bc.edu/repec/bocode/r/"
         );
         assert_eq!(
             SscDownloader::get_package_url("estout"),
-            "https://fmwww.bc.edu/repec/bocode/e/"
+            "http://fmwww.bc.edu/repec/bocode/e/"
         );
         assert_eq!(
             SscDownloader::get_package_url("UPPERCASE"),
-            "https://fmwww.bc.edu/repec/bocode/u/"
+            "http://fmwww.bc.edu/repec/bocode/u/"
+        );
+    }
+
+    #[test]
+    fn test_ssc_url_uses_http_not_https() {
+        // SSC server (fmwww.bc.edu) does not support TLS.
+        // Stata's own `ssc install` uses plain HTTP.
+        // Using HTTPS causes TLS handshake failures and forces mirror fallback.
+        assert!(
+            SSC_BASE_URL.starts_with("http://"),
+            "SSC_BASE_URL must use http://, not https:// — the server does not support TLS"
+        );
+        assert!(
+            !SSC_BASE_URL.starts_with("https://"),
+            "SSC_BASE_URL must NOT use https:// — fmwww.bc.edu does not support TLS"
+        );
+    }
+
+    #[test]
+    fn test_ssc_mirror_uses_https() {
+        // The GitHub mirror (raw.githubusercontent.com) does support HTTPS
+        assert!(
+            SSC_MIRROR_URL.starts_with("https://"),
+            "Mirror URL should use https:// (GitHub supports TLS)"
         );
     }
 
