@@ -1,8 +1,12 @@
 pub mod cache;
 pub mod github;
 pub mod global_cache;
+pub mod hints;
+pub mod http;
 pub mod installer;
+pub mod local;
 pub mod lockfile;
+pub mod net;
 pub mod pkg_parser;
 pub mod ssc;
 

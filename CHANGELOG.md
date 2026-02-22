@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-02-22
+
+### Added
+
+- `net:` source type for arbitrary URL packages (`stacy add grc1leg --source net:http://www.stata.com/users/vwiggins/`)
+- `local:` source type for vendored/local packages (`stacy add myutils --source local:./lib/myutils/`)
+- GitHub fallback: synthesize manifest from repository tree when `.pkg` file is missing
+- Post-install hints for packages with known implicit dependencies (reghdfe, ivreghdfe, ppmlhdfe, grstyle, etc.)
+
+### Changed
+
+- Improved SSC error messages: distinguish "package not found" from "mirror gap" from "server unreachable"
+
 ## [1.0.2] - 2026-02-17
 
 ### Fixed

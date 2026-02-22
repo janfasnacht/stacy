@@ -5,7 +5,10 @@
 use crate::cli::output_format::OutputFormat;
 use crate::cli::output_types::{AddOutput, CommandOutput};
 use crate::error::{Error, Result};
-use crate::packages::installer::{install_from_ssc, install_package_github};
+use crate::packages::hints;
+use crate::packages::installer::{
+    install_from_local, install_from_net, install_from_ssc, install_package_github,
+};
 use crate::project::config::{load_config, write_config, DependencyGroup, PackageSpec};
 use crate::project::Project;
 use clap::Args;
@@ -17,13 +20,17 @@ Examples:
   stacy add reghdfe ftools                Add multiple packages
   stacy add rdrobust --source github:rdpackages/rdrobust
                                           Add from GitHub
+  stacy add grc1leg --source net:http://www.stata.com/users/vwiggins/
+                                          Add from URL (net install)
+  stacy add myutils --source local:./lib/myutils/
+                                          Add from local directory
   stacy add texdoc --dev                  Add as dev dependency")]
 pub struct AddArgs {
     /// Package names to add
     #[arg(value_name = "PACKAGE", required = true)]
     pub packages: Vec<String>,
 
-    /// Package source: `ssc` (default) or `github:user/repo[@ref]`
+    /// Package source: `ssc` (default), `github:user/repo[@ref]`, `net:URL`, or `local:path`
     #[arg(long, default_value = "ssc")]
     pub source: String,
 
@@ -48,6 +55,12 @@ enum ParsedSource {
         user: String,
         repo: String,
         git_ref: Option<String>,
+    },
+    Net {
+        url: String,
+    },
+    Local {
+        path: String,
     },
 }
 
@@ -131,6 +144,12 @@ pub fn execute(args: &AddArgs) -> Result<()> {
                 &project.root,
                 group.as_str(),
             ),
+            ParsedSource::Net { url } => {
+                install_from_net(&package_lower, url, &project.root, group.as_str())
+            }
+            ParsedSource::Local { path } => {
+                install_from_local(&package_lower, path, &project.root, group.as_str())
+            }
         };
 
         match install_result {
@@ -143,6 +162,9 @@ pub fn execute(args: &AddArgs) -> Result<()> {
 
                 if format == OutputFormat::Human {
                     println!("  + {} ({})", package_lower, result.version);
+                    if let Some(hint) = hints::get_hint(&package_lower) {
+                        println!("    hint: {}", hint);
+                    }
                 }
 
                 results.push(AddedPackage {
@@ -263,8 +285,38 @@ fn parse_source(source: &str) -> Result<ParsedSource> {
         }
     }
 
+    if source_lower.starts_with("net:") {
+        let url = &source[4..]; // Skip "net:"
+        if url.is_empty() {
+            return Err(Error::Config(
+                "Empty URL after net:. Use net:http://example.com/stata/".to_string(),
+            ));
+        }
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            return Err(Error::Config(format!(
+                "Invalid net source URL: {}. Must start with http:// or https://",
+                url
+            )));
+        }
+        return Ok(ParsedSource::Net {
+            url: url.to_string(),
+        });
+    }
+
+    if source_lower.starts_with("local:") {
+        let path = &source[6..]; // Skip "local:"
+        if path.is_empty() {
+            return Err(Error::Config(
+                "Empty path after local:. Use local:./lib/myutils/".to_string(),
+            ));
+        }
+        return Ok(ParsedSource::Local {
+            path: path.to_string(),
+        });
+    }
+
     Err(Error::Config(format!(
-        "Unknown package source: '{}'. Use 'ssc' or 'github:user/repo'",
+        "Unknown package source: '{}'. Use 'ssc', 'github:user/repo', 'net:URL', or 'local:path'",
         source
     )))
 }
@@ -369,5 +421,73 @@ mod tests {
     fn test_parse_source_invalid() {
         assert!(parse_source("unknown").is_err());
         assert!(parse_source("github:invalid").is_err());
+    }
+
+    #[test]
+    fn test_parse_source_net() {
+        let result = parse_source("net:http://www.stata.com/users/vwiggins/").unwrap();
+        match result {
+            ParsedSource::Net { url } => {
+                assert_eq!(url, "http://www.stata.com/users/vwiggins/");
+            }
+            _ => panic!("Expected Net source"),
+        }
+    }
+
+    #[test]
+    fn test_parse_source_net_https() {
+        let result = parse_source("net:https://example.com/stata/").unwrap();
+        match result {
+            ParsedSource::Net { url } => {
+                assert_eq!(url, "https://example.com/stata/");
+            }
+            _ => panic!("Expected Net source"),
+        }
+    }
+
+    #[test]
+    fn test_parse_source_net_invalid() {
+        // Reject non-http/https
+        assert!(parse_source("net:ftp://example.com/").is_err());
+        // Reject empty URL
+        assert!(parse_source("net:").is_err());
+    }
+
+    #[test]
+    fn test_parse_source_local() {
+        let result = parse_source("local:./lib/myutils/").unwrap();
+        match result {
+            ParsedSource::Local { path } => {
+                assert_eq!(path, "./lib/myutils/");
+            }
+            _ => panic!("Expected Local source"),
+        }
+    }
+
+    #[test]
+    fn test_parse_source_local_absolute() {
+        let result = parse_source("local:/tmp/stata-packages/").unwrap();
+        match result {
+            ParsedSource::Local { path } => {
+                assert_eq!(path, "/tmp/stata-packages/");
+            }
+            _ => panic!("Expected Local source"),
+        }
+    }
+
+    #[test]
+    fn test_parse_source_local_invalid() {
+        // Reject empty path
+        assert!(parse_source("local:").is_err());
+    }
+
+    #[test]
+    fn test_parse_source_error_message_includes_all_sources() {
+        let err = parse_source("unknown").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("net:"));
+        assert!(msg.contains("local:"));
+        assert!(msg.contains("github:"));
+        assert!(msg.contains("ssc"));
     }
 }

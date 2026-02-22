@@ -135,6 +135,12 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
                 }
                 checked_count += 1;
             }
+            PackageSource::Net { url } => {
+                if format == OutputFormat::Human {
+                    eprintln!("  Skipping {} (net package at {})", name, url);
+                }
+                checked_count += 1;
+            }
         }
     }
 

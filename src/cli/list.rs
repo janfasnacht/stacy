@@ -52,6 +52,7 @@ pub fn execute(args: &ListArgs) -> Result<()> {
                 PackageSource::SSC { name: _ } => "ssc".to_string(),
                 PackageSource::GitHub { repo, .. } => format!("github:{}", repo),
                 PackageSource::Local { path } => format!("local:{}", path),
+                PackageSource::Net { url } => format!("net:{}", url),
             };
 
             packages.push(PackageInfo {

@@ -58,6 +58,9 @@ pub enum PackageSource {
     Local {
         path: String,
     },
+    Net {
+        url: String,
+    },
 }
 
 impl Project {
@@ -206,6 +209,25 @@ mod tests {
                 assert_eq!(commit, None);
             }
             _ => panic!("Expected GitHub variant"),
+        }
+    }
+
+    #[test]
+    fn test_net_source_roundtrip() {
+        let source = PackageSource::Net {
+            url: "http://www.stata.com/users/vwiggins/".to_string(),
+        };
+
+        let toml_str = toml::to_string(&source).unwrap();
+        assert!(toml_str.contains("Net"));
+        assert!(toml_str.contains("http://www.stata.com/users/vwiggins/"));
+
+        let deserialized: PackageSource = toml::from_str(&toml_str).unwrap();
+        match deserialized {
+            PackageSource::Net { url } => {
+                assert_eq!(url, "http://www.stata.com/users/vwiggins/");
+            }
+            _ => panic!("Expected Net variant"),
         }
     }
 

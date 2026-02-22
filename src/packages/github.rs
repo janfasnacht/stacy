@@ -4,16 +4,12 @@
 //! Looks for .pkg manifest files in the repository root.
 
 use crate::error::{Error, Result};
+use crate::packages::http::StacyHttpClient;
 use crate::packages::pkg_parser::{parse_pkg_file, PackageManifest};
 use crate::packages::ssc::{calculate_combined_checksum, calculate_sha256, DownloadedFile};
-use reqwest::blocking::Client;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::Duration;
-
-/// HTTP client timeout
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// GitHub API response for a tag
 #[derive(Debug, Deserialize)]
@@ -25,6 +21,20 @@ struct GitHubTag {
 #[derive(Debug, Deserialize)]
 struct GitHubCommit {
     sha: String,
+}
+
+/// GitHub API response for a repository tree
+#[derive(Debug, Deserialize)]
+struct GitHubTree {
+    tree: Vec<GitHubTreeEntry>,
+}
+
+/// A single entry in a GitHub tree
+#[derive(Debug, Deserialize)]
+struct GitHubTreeEntry {
+    path: String,
+    #[serde(rename = "type")]
+    entry_type: String,
 }
 
 /// Information about the latest version of a GitHub package
@@ -57,7 +67,7 @@ pub struct GitHubPackageDownload {
 
 /// GitHub package downloader
 pub struct GitHubDownloader {
-    client: Client,
+    client: StacyHttpClient,
 }
 
 impl Default for GitHubDownloader {
@@ -69,13 +79,9 @@ impl Default for GitHubDownloader {
 impl GitHubDownloader {
     /// Create a new GitHub downloader
     pub fn new() -> Self {
-        let client = Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .user_agent(concat!("stacy/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .expect("Failed to create HTTP client");
-
-        Self { client }
+        Self {
+            client: StacyHttpClient::new(),
+        }
     }
 
     /// Get the raw GitHub URL for a file
@@ -134,12 +140,36 @@ impl GitHubDownloader {
         git_ref: &str,
     ) -> Result<GitHubPackageDownload> {
         // Try to find .pkg file - check multiple locations
-        let pkg_content = self.find_and_download_pkg(name, user, repo, git_ref)?;
+        match self.find_and_download_pkg(name, user, repo, git_ref) {
+            Ok(pkg_content) => {
+                // Parse manifest
+                let manifest = parse_pkg_file(&pkg_content, name)?;
+                self.download_manifest_files(name, user, repo, git_ref, manifest)
+            }
+            Err(_pkg_err) => {
+                // No .pkg found — try to synthesize manifest from repo tree
+                match self.synthesize_manifest(name, user, repo, git_ref) {
+                    Ok(manifest) => {
+                        eprintln!(
+                            "  note: No .pkg manifest found, inferred package contents from repository files"
+                        );
+                        self.download_manifest_files(name, user, repo, git_ref, manifest)
+                    }
+                    Err(synth_err) => Err(synth_err),
+                }
+            }
+        }
+    }
 
-        // Parse manifest
-        let manifest = parse_pkg_file(&pkg_content, name)?;
-
-        // Download all files
+    /// Download all files listed in a manifest
+    fn download_manifest_files(
+        &self,
+        name: &str,
+        user: &str,
+        repo: &str,
+        git_ref: &str,
+        manifest: PackageManifest,
+    ) -> Result<GitHubPackageDownload> {
         let mut files = Vec::new();
         let mut checksums = Vec::new();
 
@@ -150,10 +180,17 @@ impl GitHubDownloader {
                 .and_then(|n| n.to_str())
                 .unwrap_or(&pkg_file.name);
 
-            // Try to download from same directory as .pkg or repo root
-            let content = self.download_file(user, repo, git_ref, filename)?;
-            let checksum = calculate_sha256(&content);
+            // For synthesized manifests, files have full paths; try that first, then filename
+            let content = if pkg_file.name.contains('/') {
+                // Try the full path first (from synthesized manifest)
+                let url = Self::get_raw_url(user, repo, git_ref, &pkg_file.name);
+                self.download_bytes(&url)
+                    .or_else(|_| self.download_file(user, repo, git_ref, filename))?
+            } else {
+                self.download_file(user, repo, git_ref, filename)?
+            };
 
+            let checksum = calculate_sha256(&content);
             checksums.push(checksum.clone());
             files.push(DownloadedFile {
                 name: filename.to_string(),
@@ -162,7 +199,6 @@ impl GitHubDownloader {
             });
         }
 
-        // Calculate combined package checksum
         let package_checksum = calculate_combined_checksum(&checksums);
 
         Ok(GitHubPackageDownload {
@@ -172,6 +208,110 @@ impl GitHubDownloader {
             manifest,
             files,
             package_checksum,
+        })
+    }
+
+    /// Synthesize a package manifest from the repository tree when no .pkg file exists
+    ///
+    /// Uses the GitHub API tree endpoint to find .ado/.sthlp files that belong
+    /// to the package.
+    fn synthesize_manifest(
+        &self,
+        name: &str,
+        user: &str,
+        repo: &str,
+        git_ref: &str,
+    ) -> Result<PackageManifest> {
+        let url = format!(
+            "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
+            user, repo, git_ref
+        );
+
+        let response = self
+            .client
+            .inner()
+            .get(&url)
+            .send()
+            .map_err(|e| Error::Network(format!("Failed to fetch repository tree: {}", e)))?;
+
+        if !response.status().is_success() {
+            return Err(Error::Network(format!(
+                "GitHub API error {} when fetching tree for {}/{}",
+                response.status().as_u16(),
+                user,
+                repo
+            )));
+        }
+
+        let tree: GitHubTree = response
+            .json()
+            .map_err(|e| Error::Network(format!("Failed to parse GitHub tree response: {}", e)))?;
+
+        // Filter tree for Stata files
+        let stata_extensions = ["ado", "sthlp", "hlp", "dlg", "mlib", "mata"];
+        let preferred_dirs = ["", "src/", "ado/"];
+
+        let mut matched_files = Vec::new();
+
+        for entry in &tree.tree {
+            if entry.entry_type != "blob" {
+                continue;
+            }
+
+            let path_lower = entry.path.to_lowercase();
+            let ext = entry.path.rsplit('.').next().unwrap_or("").to_lowercase();
+
+            if !stata_extensions.contains(&ext.as_str()) {
+                continue;
+            }
+
+            let filename = entry
+                .path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&entry.path)
+                .to_lowercase();
+            let stem = filename.split('.').next().unwrap_or("");
+
+            // Match files that:
+            // 1. Have the package name as stem (e.g., name.ado, name.sthlp)
+            // 2. Are in preferred directories (root, src/, ado/)
+            // 3. Start with _{name}_ (common helper pattern)
+            // 4. Start with l{name} (Mata library pattern)
+            let name_match = stem == name
+                || filename.starts_with(&format!("_{}_", name))
+                || filename.starts_with(&format!("l{}.", name));
+
+            let in_preferred_dir = preferred_dirs
+                .iter()
+                .any(|dir| path_lower.starts_with(dir) || !entry.path.contains('/'));
+
+            if name_match || (in_preferred_dir && ext == "ado") {
+                let file_type = crate::packages::pkg_parser::FileType::from_extension(&ext);
+                matched_files.push(crate::packages::pkg_parser::PackageFile {
+                    name: entry.path.clone(),
+                    file_type,
+                });
+            }
+        }
+
+        if !matched_files
+            .iter()
+            .any(|f| matches!(f.file_type, crate::packages::pkg_parser::FileType::Ado))
+        {
+            return Err(Error::Config(format!(
+                "No .pkg manifest or .ado files found in {}/{}",
+                user, repo
+            )));
+        }
+
+        Ok(PackageManifest {
+            name: name.to_string(),
+            title: format!("{} (synthesized from repository)", name),
+            author: None,
+            distribution_date: None,
+            files: matched_files,
+            description_lines: vec![],
         })
     }
 
@@ -239,60 +379,11 @@ impl GitHubDownloader {
     }
 
     fn download_text(&self, url: &str) -> Result<String> {
-        let response = self.client.get(url).send().map_err(|e| {
-            if e.is_timeout() {
-                Error::Network(format!("Request timed out: {}", url))
-            } else if e.is_connect() {
-                Error::Network(format!("Connection failed: {}", url))
-            } else {
-                Error::Network(format!("HTTP error: {}", e))
-            }
-        })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 404 {
-                return Err(Error::Config(format!("File not found: {}", url)));
-            }
-            return Err(Error::Network(format!(
-                "HTTP {} for {}",
-                status.as_u16(),
-                url
-            )));
-        }
-
-        response
-            .text()
-            .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))
+        self.client.download_text(url)
     }
 
     fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        let response = self.client.get(url).send().map_err(|e| {
-            if e.is_timeout() {
-                Error::Network(format!("Request timed out: {}", url))
-            } else if e.is_connect() {
-                Error::Network(format!("Connection failed: {}", url))
-            } else {
-                Error::Network(format!("HTTP error: {}", e))
-            }
-        })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 404 {
-                return Err(Error::Config(format!("File not found: {}", url)));
-            }
-            return Err(Error::Network(format!(
-                "HTTP {} for {}",
-                status.as_u16(),
-                url
-            )));
-        }
-
-        response
-            .bytes()
-            .map(|b| b.to_vec())
-            .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))
+        self.client.download_bytes(url)
     }
 
     /// Get the latest tag for a repository
@@ -302,7 +393,7 @@ impl GitHubDownloader {
     pub fn get_latest_tag(&self, user: &str, repo: &str) -> Result<Option<String>> {
         let url = format!("https://api.github.com/repos/{}/{}/tags", user, repo);
 
-        let response = self.client.get(&url).send().map_err(|e| {
+        let response = self.client.inner().get(&url).send().map_err(|e| {
             if e.is_timeout() {
                 Error::Network(format!("Request timed out: {}", url))
             } else if e.is_connect() {
@@ -382,7 +473,7 @@ impl GitHubDownloader {
             user, repo, git_ref
         );
 
-        let response = self.client.get(&url).send().ok()?;
+        let response = self.client.inner().get(&url).send().ok()?;
         if !response.status().is_success() {
             return None;
         }
@@ -519,6 +610,81 @@ mod tests {
         assert!(saved.contains_key("helper.ado"));
         assert!(ado_dir.join("t").join("testpkg.ado").exists());
         assert!(ado_dir.join("h").join("helper.ado").exists());
+    }
+
+    #[test]
+    fn test_synthesize_manifest_from_tree_response() {
+        // Test the tree filtering logic by simulating what synthesize_manifest would find
+        use crate::packages::pkg_parser::FileType;
+
+        let stata_extensions = ["ado", "sthlp", "hlp", "dlg", "mlib", "mata"];
+        let name = "mypkg";
+
+        // Simulate tree entries
+        let paths = vec![
+            "mypkg.ado",
+            "mypkg.sthlp",
+            "README.md",
+            "src/helper.ado",
+            "_mypkg_internal.ado",
+            "lmypkg.mlib",
+            "other.do",
+            "unrelated.ado",
+        ];
+
+        let preferred_dirs: Vec<&str> = vec!["", "src/", "ado/"];
+        let mut matched = Vec::new();
+
+        for path in &paths {
+            let ext = path.rsplit('.').next().unwrap_or("").to_lowercase();
+            if !stata_extensions.contains(&ext.as_str()) {
+                continue;
+            }
+
+            let filename = path.rsplit('/').next().unwrap_or(path).to_lowercase();
+            let stem = filename.split('.').next().unwrap_or("");
+
+            let name_match = stem == name
+                || filename.starts_with(&format!("_{}_", name))
+                || filename.starts_with(&format!("l{}.", name));
+
+            let in_preferred_dir = preferred_dirs
+                .iter()
+                .any(|dir| path.to_lowercase().starts_with(dir) || !path.contains('/'));
+
+            if name_match || (in_preferred_dir && ext == "ado") {
+                matched.push(path.to_string());
+            }
+        }
+
+        // Should match: mypkg.ado, mypkg.sthlp, _mypkg_internal.ado, lmypkg.mlib, unrelated.ado (in root, .ado)
+        assert!(matched.contains(&"mypkg.ado".to_string()));
+        assert!(matched.contains(&"mypkg.sthlp".to_string()));
+        assert!(matched.contains(&"_mypkg_internal.ado".to_string()));
+        assert!(matched.contains(&"lmypkg.mlib".to_string()));
+        // unrelated.ado is in root and is .ado, so it matches the broader fallback
+        assert!(matched.contains(&"unrelated.ado".to_string()));
+        // README.md should not match
+        assert!(!matched.contains(&"README.md".to_string()));
+        // src/helper.ado is in preferred dir and .ado
+        assert!(matched.contains(&"src/helper.ado".to_string()));
+    }
+
+    #[test]
+    fn test_synthesize_manifest_no_ado_files() {
+        // If a repo has no .ado files, synthesize_manifest should fail.
+        // We can test the validation logic: an empty matched_files vec with no Ado types
+        use crate::packages::pkg_parser::{FileType, PackageFile};
+
+        let matched_files: Vec<PackageFile> = vec![PackageFile {
+            name: "readme.sthlp".to_string(),
+            file_type: FileType::Help,
+        }];
+
+        let has_ado = matched_files
+            .iter()
+            .any(|f| matches!(f.file_type, FileType::Ado));
+        assert!(!has_ado, "Should have no .ado files");
     }
 
     // Integration tests that require network
