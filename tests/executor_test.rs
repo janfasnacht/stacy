@@ -6,8 +6,8 @@
 //! - Parse log
 //! - Return correct exit code
 
-use stata_cli::error::parser::parse_log_for_errors;
-use stata_cli::executor::runner::{run_stata, RunOptions};
+use stacy::error::parser::parse_log_for_errors;
+use stacy::executor::runner::{run_stata, RunOptions};
 use std::path::PathBuf;
 use std::time::Duration;
 

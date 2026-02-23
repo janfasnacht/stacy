@@ -1,7 +1,7 @@
 //! Test that we don't get false positives from r() codes in output
 
-use stata_cli::error::parser::parse_log_for_errors;
-use stata_cli::executor::runner::{run_stata, RunOptions};
+use stacy::error::parser::parse_log_for_errors;
+use stacy::executor::runner::{run_stata, RunOptions};
 use std::path::PathBuf;
 
 const STATA_BINARY: &str = "/Applications/StataNow/StataMP.app/Contents/MacOS/stata-mp";

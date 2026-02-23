@@ -100,7 +100,7 @@ impl PackageManifest {
 ///
 /// # Example
 /// ```
-/// use stata_cli::packages::pkg_parser::parse_pkg_file;
+/// use stacy::packages::pkg_parser::parse_pkg_file;
 ///
 /// let content = r#"d 'EXAMPLE': example package
 /// d Distribution-Date: 20240101

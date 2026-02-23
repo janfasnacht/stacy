@@ -1,4 +1,4 @@
-use stata_cli::executor::runner::{run_stata, RunOptions};
+use stacy::executor::runner::{run_stata, RunOptions};
 /// Integration tests for timeout handling
 ///
 /// Tests that long-running scripts are properly terminated

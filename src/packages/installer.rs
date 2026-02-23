@@ -6,9 +6,11 @@
 use crate::error::{Error, Result};
 use crate::packages::github::GitHubDownloader;
 use crate::packages::global_cache;
+use crate::packages::local;
 use crate::packages::lockfile::{
     add_package, create_lockfile, create_package_entry, load_lockfile, save_lockfile,
 };
+use crate::packages::net::NetDownloader;
 use crate::packages::ssc::SscDownloader;
 use crate::project::{PackageSource, Project};
 use std::path::{Path, PathBuf};
@@ -172,6 +174,126 @@ pub fn install_package_github(
         was_update,
         from_mirror: false, // GitHub packages don't use SSC mirrors
         package_checksum: download.package_checksum.clone(),
+    })
+}
+
+/// Install a package from a net URL
+///
+/// # Arguments
+/// * `name` - Package name
+/// * `url` - Base URL for the package (e.g., "http://www.stata.com/users/vwiggins/")
+/// * `project_root` - Project root directory
+/// * `group` - Dependency group ("production", "dev", or "test")
+pub fn install_from_net(
+    name: &str,
+    url: &str,
+    project_root: &Path,
+    group: &str,
+) -> Result<InstallResult> {
+    let name = name.to_lowercase();
+
+    // Download package
+    let downloader = NetDownloader::new();
+    let download = downloader.download_package(&name, url)?;
+
+    // Get version from manifest distribution_date or today's date
+    let version = download
+        .manifest
+        .distribution_date
+        .clone()
+        .unwrap_or_else(crate::utils::date::today_yyyymmdd);
+
+    // Save files to global cache atomically
+    let (_cache_dir, saved_files) = atomic_save_to_cache(&download.files, &name, &version)?;
+
+    // Load or create lockfile
+    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
+
+    // Check if this is an update
+    let was_update = lockfile.packages.contains_key(&name);
+
+    // Create package entry
+    let entry = create_package_entry(
+        &version,
+        PackageSource::Net {
+            url: url.to_string(),
+        },
+        &download.package_checksum,
+        group,
+    );
+
+    // Update lockfile
+    add_package(&mut lockfile, &name, entry);
+    save_lockfile(project_root, &lockfile)?;
+
+    Ok(InstallResult {
+        name,
+        version,
+        files_installed: saved_files,
+        was_update,
+        from_mirror: false,
+        package_checksum: download.package_checksum,
+    })
+}
+
+/// Install a package from a local directory
+///
+/// # Arguments
+/// * `name` - Package name
+/// * `path` - Path to local directory (relative to project root, or absolute)
+/// * `project_root` - Project root directory
+/// * `group` - Dependency group ("production", "dev", or "test")
+pub fn install_from_local(
+    name: &str,
+    path: &str,
+    project_root: &Path,
+    group: &str,
+) -> Result<InstallResult> {
+    let name = name.to_lowercase();
+
+    // Resolve path relative to project root
+    let dir = if std::path::Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        project_root.join(path)
+    };
+
+    // Scan local directory
+    let download = local::scan_local_directory(&name, &dir)?;
+
+    // Version derived from combined checksum short hash (first 8 chars)
+    let version = download.package_checksum[..8].to_string();
+
+    // Save files to global cache atomically
+    let (_cache_dir, saved_files) = atomic_save_to_cache(&download.files, &name, &version)?;
+
+    // Load or create lockfile
+    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
+
+    // Check if this is an update
+    let was_update = lockfile.packages.contains_key(&name);
+
+    // Create package entry
+    let entry = create_package_entry(
+        &version,
+        PackageSource::Local {
+            path: path.to_string(),
+        },
+        &download.package_checksum,
+        group,
+    );
+
+    // Update lockfile
+    add_package(&mut lockfile, &name, entry);
+    save_lockfile(project_root, &lockfile)?;
+
+    Ok(InstallResult {
+        name,
+        version,
+        files_installed: saved_files,
+        was_update,
+        from_mirror: false,
+        package_checksum: download.package_checksum,
     })
 }
 

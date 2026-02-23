@@ -2,7 +2,7 @@
 ///
 /// Tests that the parser correctly handles Stata logs with multiple
 /// "end of do-file" markers (from nested do-file calls).
-use stata_cli::error::parser::{parse_log_content, parse_log_file};
+use stacy::error::parser::{parse_log_content, parse_log_file};
 use std::path::PathBuf;
 
 #[test]

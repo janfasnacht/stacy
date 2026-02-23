@@ -25,8 +25,8 @@ use super::StataError;
 /// # Examples
 ///
 /// ```
-/// use stata_cli::error::{StataError, ErrorType};
-/// use stata_cli::error::mapper::error_to_exit_code;
+/// use stacy::error::{StataError, ErrorType};
+/// use stacy::error::mapper::error_to_exit_code;
 ///
 /// let err = StataError::new(ErrorType::SyntaxError, "unrecognized command".to_string(), 199);
 /// assert_eq!(error_to_exit_code(&err), 2);

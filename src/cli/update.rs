@@ -133,6 +133,19 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                 "Cannot update local package: {}",
                 path
             ))),
+            PackageSource::Net { url } => {
+                if args.dry_run {
+                    Ok(None)
+                } else {
+                    crate::packages::installer::install_from_net(
+                        pkg_name,
+                        url,
+                        &project.root,
+                        group,
+                    )
+                    .map(|r| Some(r.version))
+                }
+            }
         };
 
         match update_result {

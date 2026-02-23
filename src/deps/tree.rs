@@ -187,7 +187,7 @@ pub struct FlatDependency {
 /// # Example
 /// ```no_run
 /// use std::path::Path;
-/// use stata_cli::deps::tree::build_tree;
+/// use stacy::deps::tree::build_tree;
 ///
 /// let tree = build_tree(Path::new("main.do"))?;
 /// println!("{}", tree.format_tree());

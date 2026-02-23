@@ -364,12 +364,52 @@ fn sync_package(
                 })
             }
         }
-        PackageSource::Local { path } => Ok(SyncedPackage {
-            name: name.to_string(),
-            version: entry.version.clone(),
-            action: SyncAction::Skipped(format!("Local source not yet supported: {}", path)),
-            checksum_ok: None,
-        }),
+        PackageSource::Local { path } => {
+            match crate::packages::installer::install_from_local(name, path, project_root, group) {
+                Ok(_) => {
+                    let checksum_ok = if verify {
+                        verify_package_checksum(name, entry)
+                    } else {
+                        None
+                    };
+                    Ok(SyncedPackage {
+                        name: name.to_string(),
+                        version: entry.version.clone(),
+                        action: SyncAction::Installed,
+                        checksum_ok,
+                    })
+                }
+                Err(e) => Ok(SyncedPackage {
+                    name: name.to_string(),
+                    version: entry.version.clone(),
+                    action: SyncAction::Skipped(e.to_string()),
+                    checksum_ok: None,
+                }),
+            }
+        }
+        PackageSource::Net { url } => {
+            match crate::packages::installer::install_from_net(name, url, project_root, group) {
+                Ok(result) => {
+                    let checksum_ok = if verify {
+                        verify_package_checksum(name, entry)
+                    } else {
+                        None
+                    };
+                    Ok(SyncedPackage {
+                        name: name.to_string(),
+                        version: result.version,
+                        action: SyncAction::Installed,
+                        checksum_ok,
+                    })
+                }
+                Err(e) => Ok(SyncedPackage {
+                    name: name.to_string(),
+                    version: entry.version.clone(),
+                    action: SyncAction::Skipped(e.to_string()),
+                    checksum_ok: None,
+                }),
+            }
+        }
     }
 }
 

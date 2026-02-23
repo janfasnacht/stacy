@@ -119,7 +119,7 @@ fn test_large_log_file() {
     );
 
     // Parse the log to ensure we can handle it
-    use stata_cli::error::parser::parse_log_file;
+    use stacy::error::parser::parse_log_file;
     let parse_result = parse_log_file(&log_file);
     assert!(
         parse_result.is_ok(),
@@ -137,7 +137,7 @@ fn test_large_log_file() {
 #[test]
 fn test_large_log_memory_efficiency() {
     // Test that read_last_lines doesn't load entire file
-    use stata_cli::executor::log_reader::read_last_lines;
+    use stacy::executor::log_reader::read_last_lines;
     use std::io::Write;
     use tempfile::NamedTempFile;
 

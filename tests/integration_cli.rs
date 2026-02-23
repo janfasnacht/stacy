@@ -29,7 +29,7 @@ fn test_version() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::contains("1.0.2"));
+        .stdout(predicate::str::contains("1.1.0"));
 }
 
 #[test]
@@ -3261,4 +3261,83 @@ fn test_run_trace_preserves_working_dir() {
         subdir.join("trace_output.txt").exists(),
         "output file should be in the -C directory"
     );
+}
+
+// =============================================================================
+// Issue #1: New source types
+// =============================================================================
+
+#[test]
+fn test_add_local_package() {
+    let temp = TempDir::new().unwrap();
+
+    // Initialize project
+    stacy().arg("init").arg(temp.path()).assert().success();
+
+    // Create local package directory
+    let pkg_dir = temp.path().join("lib").join("mypkg");
+    fs::create_dir_all(&pkg_dir).unwrap();
+    fs::write(pkg_dir.join("mypkg.ado"), "program define mypkg\nend\n").unwrap();
+    fs::write(pkg_dir.join("mypkg.sthlp"), "{title:mypkg help}\n").unwrap();
+
+    // Add local package
+    stacy()
+        .arg("add")
+        .arg("mypkg")
+        .arg("--source")
+        .arg("local:./lib/mypkg/")
+        .current_dir(temp.path())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("+ mypkg"));
+
+    // Verify it's in stacy.toml
+    let config = fs::read_to_string(temp.path().join("stacy.toml")).unwrap();
+    assert!(config.contains("mypkg"));
+    assert!(config.contains("local:"));
+
+    // Verify lockfile was created
+    let lockfile = fs::read_to_string(temp.path().join("stacy.lock")).unwrap();
+    assert!(lockfile.contains("mypkg"));
+    assert!(lockfile.contains("Local"));
+}
+
+#[test]
+fn test_add_local_package_no_ado_files_fails() {
+    let temp = TempDir::new().unwrap();
+
+    // Initialize project
+    stacy().arg("init").arg(temp.path()).assert().success();
+
+    // Create local directory with no .ado files
+    let pkg_dir = temp.path().join("lib").join("empty");
+    fs::create_dir_all(&pkg_dir).unwrap();
+    fs::write(pkg_dir.join("readme.txt"), "no stata files here").unwrap();
+
+    // Should fail
+    stacy()
+        .arg("add")
+        .arg("empty")
+        .arg("--source")
+        .arg("local:./lib/empty/")
+        .current_dir(temp.path())
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_add_invalid_source_shows_all_options() {
+    let temp = TempDir::new().unwrap();
+
+    stacy().arg("init").arg(temp.path()).assert().success();
+
+    stacy()
+        .arg("add")
+        .arg("pkg")
+        .arg("--source")
+        .arg("invalid")
+        .current_dir(temp.path())
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("net:").or(predicate::str::contains("local:")));
 }

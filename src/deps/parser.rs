@@ -78,7 +78,7 @@ static INCLUDE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 /// # Example
 /// ```no_run
 /// use std::path::Path;
-/// use stata_cli::deps::parser::parse_dependencies;
+/// use stacy::deps::parser::parse_dependencies;
 ///
 /// let deps = parse_dependencies(Path::new("analysis.do"))?;
 /// for dep in deps {

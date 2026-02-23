@@ -3,7 +3,7 @@
 //! Tests cache file I/O, staleness detection, and flag file writing
 //! without making any network requests.
 
-use stata_cli::update_check::{
+use stacy::update_check::{
     compare_versions, detect_install_method, is_cache_fresh, load_cached_update,
     upgrade_instruction, InstallMethod, VersionCheckCache,
 };

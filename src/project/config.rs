@@ -896,6 +896,126 @@ mdesc = "ssc"
     }
 
     #[test]
+    fn test_package_spec_net_roundtrip() {
+        // PackageSpec must be serialized within a map (TOML doesn't support bare strings)
+        let mut deps: HashMap<String, PackageSpec> = HashMap::new();
+        deps.insert(
+            "grc1leg".to_string(),
+            PackageSpec::simple("net:http://www.stata.com/users/vwiggins/"),
+        );
+        let toml_str = toml::to_string(&deps).unwrap();
+        let parsed: HashMap<String, PackageSpec> = toml::from_str(&toml_str).unwrap();
+        assert_eq!(
+            parsed["grc1leg"].source(),
+            "net:http://www.stata.com/users/vwiggins/"
+        );
+    }
+
+    #[test]
+    fn test_package_spec_local_roundtrip() {
+        let mut deps: HashMap<String, PackageSpec> = HashMap::new();
+        deps.insert(
+            "myutils".to_string(),
+            PackageSpec::simple("local:./lib/myutils/"),
+        );
+        let toml_str = toml::to_string(&deps).unwrap();
+        let parsed: HashMap<String, PackageSpec> = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed["myutils"].source(), "local:./lib/myutils/");
+    }
+
+    #[test]
+    fn test_load_config_with_net_and_local_sources() {
+        let temp = TempDir::new().unwrap();
+        let config_content = r#"
+[packages.dependencies]
+grc1leg = "net:http://www.stata.com/users/vwiggins/"
+myutils = "local:./lib/myutils/"
+estout = "ssc"
+"#;
+        fs::write(temp.path().join("stacy.toml"), config_content).unwrap();
+
+        let result = load_config(temp.path()).unwrap().unwrap();
+        assert!(result.packages.has_package("grc1leg"));
+        assert!(result.packages.has_package("myutils"));
+        assert!(result.packages.has_package("estout"));
+
+        // Verify sources survive the load
+        let grc_spec = result.packages.dependencies.get("grc1leg").unwrap();
+        assert_eq!(
+            grc_spec.source(),
+            "net:http://www.stata.com/users/vwiggins/"
+        );
+        let myutils_spec = result.packages.dependencies.get("myutils").unwrap();
+        assert_eq!(myutils_spec.source(), "local:./lib/myutils/");
+    }
+
+    #[test]
+    fn test_write_and_reload_config_with_all_sources() {
+        let temp = TempDir::new().unwrap();
+
+        // Create config with all source types
+        let mut config = Config::default();
+        config.packages.add_dependency(
+            "estout".to_string(),
+            PackageSpec::simple("ssc"),
+            DependencyGroup::Production,
+        );
+        config.packages.add_dependency(
+            "reghdfe".to_string(),
+            PackageSpec::simple("github:sergiocorreia/reghdfe"),
+            DependencyGroup::Production,
+        );
+        config.packages.add_dependency(
+            "grc1leg".to_string(),
+            PackageSpec::simple("net:http://www.stata.com/users/vwiggins/"),
+            DependencyGroup::Production,
+        );
+        config.packages.add_dependency(
+            "myutils".to_string(),
+            PackageSpec::simple("local:./lib/myutils/"),
+            DependencyGroup::Dev,
+        );
+
+        // Write
+        write_config(&config, temp.path()).unwrap();
+
+        // Reload
+        let reloaded = load_config(temp.path()).unwrap().unwrap();
+        assert_eq!(
+            reloaded
+                .packages
+                .dependencies
+                .get("estout")
+                .unwrap()
+                .source(),
+            "ssc"
+        );
+        assert_eq!(
+            reloaded
+                .packages
+                .dependencies
+                .get("reghdfe")
+                .unwrap()
+                .source(),
+            "github:sergiocorreia/reghdfe"
+        );
+        assert_eq!(
+            reloaded
+                .packages
+                .dependencies
+                .get("grc1leg")
+                .unwrap()
+                .source(),
+            "net:http://www.stata.com/users/vwiggins/"
+        );
+        assert_eq!(
+            reloaded.packages.dev.get("myutils").unwrap().source(),
+            "local:./lib/myutils/"
+        );
+        assert!(reloaded.packages.is_dev_package("myutils"));
+    }
+
+    #[test]
     fn test_load_config_with_test_dependencies() {
         let temp = TempDir::new().unwrap();
         let config_content = r#"

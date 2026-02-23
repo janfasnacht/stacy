@@ -5,12 +5,11 @@
 //! SSC is Stata's primary community package repository.
 
 use crate::error::{Error, Result};
+use crate::packages::http::StacyHttpClient;
 use crate::packages::pkg_parser::{parse_pkg_file, PackageManifest};
-use reqwest::blocking::Client;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::Path;
-use std::time::Duration;
 
 /// Base URL for SSC archive (primary)
 ///
@@ -23,9 +22,6 @@ const SSC_BASE_URL: &str = "http://fmwww.bc.edu/repec/bocode";
 /// See: <https://github.com/labordynamicsinstitute/ssc-mirror>
 const SSC_MIRROR_URL: &str =
     "https://raw.githubusercontent.com/labordynamicsinstitute/ssc-mirror/releases/fmwww.bc.edu/repec/bocode";
-
-/// HTTP client timeout
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A downloaded file with its content and checksum
 #[derive(Debug, Clone)]
@@ -55,7 +51,7 @@ pub struct PackageDownload {
 
 /// SSC package downloader
 pub struct SscDownloader {
-    client: Client,
+    client: StacyHttpClient,
 }
 
 impl Default for SscDownloader {
@@ -67,13 +63,9 @@ impl Default for SscDownloader {
 impl SscDownloader {
     /// Create a new SSC downloader
     pub fn new() -> Self {
-        let client = Client::builder()
-            .timeout(REQUEST_TIMEOUT)
-            .user_agent(concat!("stacy/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .expect("Failed to create HTTP client");
-
-        Self { client }
+        Self {
+            client: StacyHttpClient::new(),
+        }
     }
 
     /// Get the SSC URL for a package (primary server)
@@ -105,6 +97,11 @@ impl SscDownloader {
 
     /// Download a package from SSC (tries primary, then mirror)
     ///
+    /// Error handling distinguishes three failure scenarios:
+    /// 1. Primary 404 → check mirror to distinguish "package doesn't exist" from "mirror gap"
+    /// 2. Primary connection error → try mirror as fallback
+    /// 3. Both unreachable → suggest checking internet connection
+    ///
     /// # Arguments
     /// * `name` - Package name (e.g., "rdrobust", "estout")
     ///
@@ -120,20 +117,53 @@ impl SscDownloader {
                 Ok(download)
             }
             Err(primary_err) => {
-                // If connection failed, try GitHub mirror
                 if is_connection_error(&primary_err) {
+                    // Primary connection error → try mirror as fallback
                     eprintln!("Primary SSC server unreachable, trying GitHub mirror...");
-                    self.download_package_from_url(&name, Self::get_mirror_url(&name))
-                        .map(|mut download| {
+                    match self.download_package_from_url(&name, Self::get_mirror_url(&name)) {
+                        Ok(mut download) => {
                             download.from_mirror = true;
-                            download
-                        })
-                        .map_err(|mirror_err| {
-                            Error::Network(format!(
-                                "Both SSC servers failed. Primary: {}. Mirror: {}",
-                                primary_err, mirror_err
-                            ))
-                        })
+                            Ok(download)
+                        }
+                        Err(mirror_err) => {
+                            if is_not_found_error(&mirror_err) {
+                                Err(Error::Network(format!(
+                                    "SSC server is unreachable and the GitHub mirror does not have '{}'. \
+                                     This may be a recently published package not yet mirrored, \
+                                     or the package name may be misspelled.",
+                                    name
+                                )))
+                            } else if is_connection_error(&mirror_err) {
+                                Err(Error::Network(
+                                    "Both SSC and its GitHub mirror are unreachable. \
+                                     Check your internet connection."
+                                        .to_string(),
+                                ))
+                            } else {
+                                Err(Error::Network(format!(
+                                    "Both SSC servers failed. Primary: {}. Mirror: {}",
+                                    primary_err, mirror_err
+                                )))
+                            }
+                        }
+                    }
+                } else if is_not_found_error(&primary_err) {
+                    // Primary 404 → check mirror to see if it's a mirror gap
+                    match self.download_package_from_url(&name, Self::get_mirror_url(&name)) {
+                        Ok(mut download) => {
+                            eprintln!(
+                                "  note: SSC primary is missing this package; installed from GitHub mirror"
+                            );
+                            download.from_mirror = true;
+                            Ok(download)
+                        }
+                        Err(_) => Err(Error::Config(format!(
+                            "Package '{}' not found on SSC. \
+                                 Check spelling or verify the package exists at \
+                                 https://ideas.repec.org/s/boc/bocode.html",
+                            name
+                        ))),
+                    }
                 } else {
                     Err(primary_err)
                 }
@@ -185,7 +215,7 @@ impl SscDownloader {
         let base_url = Self::get_package_url(&name);
         let pkg_url = format!("{}{}.pkg", base_url, name);
 
-        match self.client.head(&pkg_url).send() {
+        match self.client.inner().head(&pkg_url).send() {
             Ok(response) => Ok(response.status().is_success()),
             Err(e) => {
                 if e.is_timeout() || e.is_connect() {
@@ -208,60 +238,11 @@ impl SscDownloader {
     }
 
     fn download_text(&self, url: &str) -> Result<String> {
-        let response = self.client.get(url).send().map_err(|e| {
-            if e.is_timeout() {
-                Error::Network(format!("Request timed out: {}", url))
-            } else if e.is_connect() {
-                Error::Network(format!("Connection failed: {}", url))
-            } else {
-                Error::Network(format!("HTTP error: {}", e))
-            }
-        })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 404 {
-                return Err(Error::Config(format!("Package not found: {}", url)));
-            }
-            return Err(Error::Network(format!(
-                "HTTP {} for {}",
-                status.as_u16(),
-                url
-            )));
-        }
-
-        response
-            .text()
-            .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))
+        self.client.download_text(url)
     }
 
     fn download_bytes(&self, url: &str) -> Result<Vec<u8>> {
-        let response = self.client.get(url).send().map_err(|e| {
-            if e.is_timeout() {
-                Error::Network(format!("Request timed out: {}", url))
-            } else if e.is_connect() {
-                Error::Network(format!("Connection failed: {}", url))
-            } else {
-                Error::Network(format!("HTTP error: {}", e))
-            }
-        })?;
-
-        if !response.status().is_success() {
-            let status = response.status();
-            if status.as_u16() == 404 {
-                return Err(Error::Config(format!("File not found: {}", url)));
-            }
-            return Err(Error::Network(format!(
-                "HTTP {} for {}",
-                status.as_u16(),
-                url
-            )));
-        }
-
-        response
-            .bytes()
-            .map(|b| b.to_vec())
-            .map_err(|e| Error::Network(format!("Failed to read response: {}", e)))
+        self.client.download_bytes(url)
     }
 }
 
@@ -295,6 +276,14 @@ fn is_connection_error(err: &Error) -> bool {
                 || msg.contains("timed out")
                 || msg.contains("connect")
         }
+        _ => false,
+    }
+}
+
+/// Check if an error indicates a 404 / package not found
+fn is_not_found_error(err: &Error) -> bool {
+    match err {
+        Error::Config(msg) => msg.to_lowercase().contains("not found"),
         _ => false,
     }
 }
@@ -481,6 +470,47 @@ mod tests {
         assert!(!is_connection_error(&Error::Config(
             "some config error".to_string()
         )));
+    }
+
+    // Tests for is_not_found_error
+    #[test]
+    fn test_is_not_found_error() {
+        assert!(is_not_found_error(&Error::Config(
+            "Package not found: http://example.com/pkg.pkg".to_string()
+        )));
+        assert!(is_not_found_error(&Error::Config(
+            "File not found: http://example.com/foo.ado".to_string()
+        )));
+        assert!(!is_not_found_error(&Error::Network(
+            "Connection failed".to_string()
+        )));
+        assert!(!is_not_found_error(&Error::Config(
+            "Invalid configuration".to_string()
+        )));
+    }
+
+    // Tests for error message content
+    #[test]
+    fn test_error_message_package_not_found() {
+        // Simulate what happens when both primary and mirror return 404
+        let err = Error::Config(
+            "Package 'notreal' not found on SSC. Check spelling or verify the package exists at https://ideas.repec.org/s/boc/bocode.html".to_string()
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("not found on SSC"));
+        assert!(msg.contains("Check spelling"));
+        assert!(msg.contains("ideas.repec.org"));
+    }
+
+    #[test]
+    fn test_error_message_connection_error() {
+        let err = Error::Network(
+            "Both SSC and its GitHub mirror are unreachable. Check your internet connection."
+                .to_string(),
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("unreachable"));
+        assert!(msg.contains("internet connection"));
     }
 
     // Tests for save_package_files with cross-directory files

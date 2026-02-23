@@ -16,8 +16,8 @@ use super::ErrorType;
 /// # Examples
 ///
 /// ```
-/// use stata_cli::error::codes::r_code_to_error_type;
-/// use stata_cli::error::ErrorType;
+/// use stacy::error::codes::r_code_to_error_type;
+/// use stacy::error::ErrorType;
 ///
 /// assert_eq!(r_code_to_error_type(199), ErrorType::SyntaxError);
 /// assert_eq!(r_code_to_error_type(601), ErrorType::FileError);
