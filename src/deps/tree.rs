@@ -249,6 +249,18 @@ fn build_tree_recursive(
     // Build children
     let mut children = Vec::new();
     for dep in dependencies {
+        // Require dependencies are package names, not files — add as leaf nodes
+        if dep.dep_type == DependencyType::Require {
+            children.push(DependencyTree {
+                path: dep.path.clone(),
+                dep_type: Some(DependencyType::Require),
+                children: Vec::new(),
+                is_circular: false,
+                exists: true, // Package existence is not a file check
+                line_number: Some(dep.line_number),
+            });
+            continue;
+        }
         let resolved_path = dep.resolve(base_dir);
         let child = build_tree_recursive(
             &resolved_path,

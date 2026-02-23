@@ -179,15 +179,41 @@ stacy env --format json
 
 ```json
 {
-  "root": "master.do",
-  "files": [
-    "master.do",
-    "config/settings.do",
-    "src/01_clean_data.do",
-    "src/utils/helpers.do"
-  ],
-  "missing": [],
-  "circular": []
+  "script": "master.do",
+  "dependencies": {
+    "path": "master.do",
+    "type": null,
+    "exists": true,
+    "is_circular": false,
+    "line_number": null,
+    "children": [
+      {
+        "path": "config/settings.do",
+        "type": "do",
+        "exists": true,
+        "is_circular": false,
+        "line_number": 3,
+        "children": []
+      },
+      {
+        "path": "reghdfe",
+        "type": "require",
+        "exists": true,
+        "is_circular": false,
+        "line_number": 5,
+        "children": []
+      }
+    ]
+  },
+  "summary": {
+    "unique_count": 2,
+    "has_circular": false,
+    "has_missing": false,
+    "circular_paths": [],
+    "missing_paths": [],
+    "circular_count": 0,
+    "missing_count": 0
+  }
 }
 ```
 

@@ -14,6 +14,7 @@ use crate::error::Result;
 use crate::executor::binary::detect_stata_binary;
 use crate::packages::global_cache;
 use crate::project::Project;
+use crate::update_check;
 use clap::Args;
 
 #[derive(Args)]
@@ -145,6 +146,7 @@ fn run_all_checks() -> Result<Vec<DiagnosticResult>> {
         check_error_codes(),
         check_write_permissions(),
         check_env_vars(),
+        check_update_status(),
     ];
 
     Ok(checks)
@@ -360,6 +362,39 @@ fn check_env_vars() -> DiagnosticResult {
             message: "STATA_ENGINE not set (using auto-detection)".to_string(),
             suggestion: None,
         }
+    }
+}
+
+fn check_update_status() -> DiagnosticResult {
+    match update_check::load_cached_update() {
+        Some(cache) if cache.update_available => {
+            let method = update_check::detect_install_method();
+            let instruction = update_check::upgrade_instruction(&method);
+            DiagnosticResult {
+                name: "Update Status".to_string(),
+                status: CheckStatus::Warn,
+                message: format!(
+                    "v{} available (current: v{})",
+                    cache.latest_version, cache.current_version
+                ),
+                suggestion: Some(format!("Run '{instruction}' to update")),
+            }
+        }
+        Some(cache) => DiagnosticResult {
+            name: "Update Status".to_string(),
+            status: CheckStatus::Pass,
+            message: format!("v{} (latest)", cache.current_version),
+            suggestion: None,
+        },
+        None => DiagnosticResult {
+            name: "Update Status".to_string(),
+            status: CheckStatus::Pass,
+            message: format!(
+                "v{} (update check not yet cached)",
+                env!("CARGO_PKG_VERSION")
+            ),
+            suggestion: None,
+        },
     }
 }
 

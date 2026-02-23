@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `local:` source type for vendored/local packages (`stacy add myutils --source local:./lib/myutils/`)
 - GitHub fallback: synthesize manifest from repository tree when `.pkg` file is missing
 - Post-install hints for packages with known implicit dependencies (reghdfe, ivreghdfe, ppmlhdfe, grstyle, etc.)
+- `stacy doctor` now surfaces available updates (reads version check cache)
+- `stacy deps` now parses `require` statements as package dependencies (including `cap require` and `capture require`)
 
 ### Changed
 
@@ -68,7 +70,8 @@ Initial public release.
 - `--format json` and `--format stata` output modes
 - Cross-platform support: macOS, Linux, Windows
 
-[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.0.2...HEAD
+[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/janfasnacht/stacy/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/janfasnacht/stacy/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/janfasnacht/stacy/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/janfasnacht/stacy/releases/tag/v1.0.0

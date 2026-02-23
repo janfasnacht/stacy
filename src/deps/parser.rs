@@ -16,6 +16,8 @@ pub enum DependencyType {
     Run,
     /// `include "file.do"` - include script inline
     Include,
+    /// `require reghdfe >= 6.0` - package requirement
+    Require,
 }
 
 impl std::fmt::Display for DependencyType {
@@ -24,6 +26,7 @@ impl std::fmt::Display for DependencyType {
             DependencyType::Do => write!(f, "do"),
             DependencyType::Run => write!(f, "run"),
             DependencyType::Include => write!(f, "include"),
+            DependencyType::Require => write!(f, "require"),
         }
     }
 }
@@ -66,6 +69,11 @@ static RUN_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 static INCLUDE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?i)^\s*include\s+(?:`"([^"]+)"'|"([^"]+)"|'([^']+)'|(\S+))"#).unwrap()
 });
+
+/// Matches: `require reghdfe`, `require reghdfe >= 6.0`, `require ftools, from(...)` etc.
+/// Captures just the package name (first word after `require`).
+static REQUIRE_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(?i)^\s*(?:cap(?:ture)?\s+)?require\s+(\w+)"#).unwrap());
 
 /// Parse a Stata script file for dependencies
 ///
@@ -143,6 +151,19 @@ pub fn parse_dependencies_from_content(content: &str) -> Result<Vec<Dependency>>
                 raw_statement: line.trim().to_string(),
                 ..dep
             });
+        } else if let Some(caps) = REQUIRE_PATTERN.captures(line_without_comment) {
+            if let Some(pkg_name) = caps.get(1) {
+                let name = pkg_name.as_str();
+                // Skip `require using` which loads a requirements file, not a package
+                if !name.eq_ignore_ascii_case("using") {
+                    dependencies.push(Dependency {
+                        path: PathBuf::from(name),
+                        dep_type: DependencyType::Require,
+                        line_number,
+                        raw_statement: line.trim().to_string(),
+                    });
+                }
+            }
         }
     }
 
@@ -308,6 +329,49 @@ include "c.do"
 display "Hello"
 regress y x
 "#;
+        let deps = parse_dependencies_from_content(content).unwrap();
+        assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_parse_require() {
+        let content = "require reghdfe >= 6.0";
+        let deps = parse_dependencies_from_content(content).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].dep_type, DependencyType::Require);
+        assert_eq!(deps[0].path, PathBuf::from("reghdfe"));
+    }
+
+    #[test]
+    fn test_parse_require_simple() {
+        let content = "require ftools";
+        let deps = parse_dependencies_from_content(content).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].dep_type, DependencyType::Require);
+        assert_eq!(deps[0].path, PathBuf::from("ftools"));
+    }
+
+    #[test]
+    fn test_parse_require_capture() {
+        let content = "cap require reghdfe >= 6.0";
+        let deps = parse_dependencies_from_content(content).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].dep_type, DependencyType::Require);
+        assert_eq!(deps[0].path, PathBuf::from("reghdfe"));
+    }
+
+    #[test]
+    fn test_parse_require_capture_full() {
+        let content = "capture require ftools";
+        let deps = parse_dependencies_from_content(content).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].path, PathBuf::from("ftools"));
+    }
+
+    #[test]
+    fn test_parse_require_using_skipped() {
+        // `require using "requirements.txt"` loads a file, not a package
+        let content = r#"require using "requirements.txt""#;
         let deps = parse_dependencies_from_content(content).unwrap();
         assert!(deps.is_empty());
     }

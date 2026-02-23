@@ -11,8 +11,11 @@ stacy deps <SCRIPT> [OPTIONS]
 ## Description
 
 Analyzes a Stata script to find all files it depends on (via `do`, `run`,
-`include`). Shows a tree view of the dependency graph, detects circular
-dependencies, and identifies missing files.
+`include`) and package dependencies (via `require`). Shows a tree view of the
+dependency graph, detects circular dependencies, and identifies missing files.
+
+`require` statements (including `cap require` and `capture require`) are
+recognized as package dependencies and shown as leaf nodes in the tree.
 
 ## Arguments
 
