@@ -1,8 +1,8 @@
 //! Integration tests for error code extraction and caching
 
 use serial_test::serial;
-use stata_cli::error::error_db::{ErrorCodeCache, ErrorCodeEntry, ErrorDatabase};
-use stata_cli::error::extraction::parse_extraction_log;
+use stacy::error::error_db::{ErrorCodeCache, ErrorCodeEntry, ErrorDatabase};
+use stacy::error::extraction::parse_extraction_log;
 use tempfile::TempDir;
 
 /// Helper to run a test with a temporary cache directory.
@@ -92,7 +92,7 @@ fn test_cache_load_when_missing() {
 fn test_full_extraction_e2e() {
     let binary = std::env::var("STATA_BINARY").unwrap_or_else(|_| "stata-mp".to_string());
 
-    let db = stata_cli::error::extraction::extract_error_codes(&binary).unwrap();
+    let db = stacy::error::extraction::extract_error_codes(&binary).unwrap();
 
     assert!(db.len() > 100, "Expected >100 codes, got {}", db.len());
     assert!(db.stata_version.is_some());

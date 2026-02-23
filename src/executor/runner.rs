@@ -96,7 +96,7 @@ impl<'a> RunOptions<'a> {
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use stata_cli::executor::runner::{run_stata, RunOptions};
+/// use stacy::executor::runner::{run_stata, RunOptions};
 ///
 /// let script = Path::new("analysis.do");
 /// let options = RunOptions::new("stata-mp");

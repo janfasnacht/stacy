@@ -19,7 +19,7 @@ use std::path::Path;
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use stata_cli::executor::log_reader::read_last_lines;
+/// use stacy::executor::log_reader::read_last_lines;
 ///
 /// let log = Path::new("script.log");
 /// let lines = read_last_lines(log, 20)?;
@@ -61,7 +61,7 @@ pub fn read_last_lines(log_file: &Path, n: usize) -> Result<Vec<String>> {
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use stata_cli::executor::log_reader::read_full_log;
+/// use stacy::executor::log_reader::read_full_log;
 ///
 /// let log = Path::new("script.log");
 /// let content = read_full_log(log)?;
@@ -81,7 +81,7 @@ pub fn read_full_log(log_file: &Path) -> Result<String> {
 ///
 /// ```no_run
 /// use std::path::Path;
-/// use stata_cli::executor::log_reader::is_successful_completion;
+/// use stacy::executor::log_reader::is_successful_completion;
 ///
 /// let log = Path::new("script.log");
 /// if is_successful_completion(log)? {

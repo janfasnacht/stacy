@@ -1,7 +1,7 @@
 /// Test binary detection
 ///
 /// Run with: cargo run --example test_binary_detection
-use stata_cli::executor::binary::detect_stata_binary;
+use stacy::executor::binary::detect_stata_binary;
 
 fn main() {
     println!("Testing Stata binary detection...\n");
@@ -29,7 +29,7 @@ fn main() {
 
     // Test 3: User config
     println!("\n3. User config (~/.config/stacy/config.toml):");
-    match stata_cli::project::user_config::load_user_config() {
+    match stacy::project::user_config::load_user_config() {
         Ok(Some(config)) => {
             if let Some(binary) = config.stata_binary {
                 println!("   Configured: {}", binary);

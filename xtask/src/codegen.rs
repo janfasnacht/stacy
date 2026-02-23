@@ -90,6 +90,10 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
         generated_files.push((md_path, md_content));
     }
 
+    // Generate CITATION.cff with current version
+    let citation_content = generate_citation_cff(&version)?;
+    generated_files.push((project_root().join("CITATION.cff"), citation_content));
+
     // Generate reference documentation
     let reference_dir = project_root().join("docs/src/reference");
     if verbose {
@@ -1044,4 +1048,72 @@ fn generate_exit_codes_md(schema: &Schema) -> Result<String> {
     out.push_str("- [stacy run](../commands/run.md)\n");
 
     Ok(out)
+}
+
+// =============================================================================
+// CITATION.CFF GENERATION
+// =============================================================================
+
+/// Generate CITATION.cff with the current version from Cargo.toml
+///
+/// The date-released is read from CHANGELOG.md if a matching version entry
+/// exists, otherwise falls back to today's date.
+fn generate_citation_cff(version: &str) -> Result<String> {
+    // Try to extract date from CHANGELOG.md: ## [version] - YYYY-MM-DD
+    let date = extract_changelog_date(version).unwrap_or_else(|| chrono_free_today());
+
+    let mut out = String::new();
+    out.push_str("cff-version: 1.2.0\n");
+    out.push_str(
+        "title: \"stacy: Reproducible Stata projects through lockfiles and exit codes\"\n",
+    );
+    out.push_str("message: \"If you use this software, please cite it as below.\"\n");
+    out.push_str("type: software\n");
+    out.push_str("authors:\n");
+    out.push_str("  - family-names: Fasnacht\n");
+    out.push_str("    given-names: Jan\n");
+    out.push_str("    email: jfasnacht@uchicago.edu\n");
+    out.push_str("repository-code: https://github.com/janfasnacht/stacy\n");
+    out.push_str("license: MIT\n");
+    out.push_str(&format!("version: {}\n", version));
+    out.push_str(&format!("date-released: {}\n", date));
+    out.push_str("keywords:\n");
+    out.push_str("  - stata\n");
+    out.push_str("  - reproducibility\n");
+    out.push_str("  - workflow\n");
+    out.push_str("  - research\n");
+    Ok(out)
+}
+
+/// Extract release date for a version from CHANGELOG.md
+///
+/// Looks for lines like: ## [1.1.0] - 2026-02-22
+fn extract_changelog_date(version: &str) -> Option<String> {
+    let changelog_path = project_root().join("CHANGELOG.md");
+    let content = std::fs::read_to_string(changelog_path).ok()?;
+    let prefix = format!("## [{}]", version);
+    for line in content.lines() {
+        if line.starts_with(&prefix) {
+            // Extract date after " - "
+            if let Some(date_part) = line.split(" - ").nth(1) {
+                let date = date_part.trim();
+                if date.len() == 10 {
+                    return Some(date.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Get today's date as YYYY-MM-DD without pulling in chrono
+fn chrono_free_today() -> String {
+    // Use std::process::Command to get date portably
+    std::process::Command::new("date")
+        .arg("+%Y-%m-%d")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "1970-01-01".to_string())
 }
