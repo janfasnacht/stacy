@@ -2,7 +2,7 @@
 members = [".", "xtask"]
 
 [package]
-name = "stata-cli"
+name = "stacy"
 version = "1.1.0"
 edition = "2021"
 rust-version = "1.87"
