@@ -5,7 +5,7 @@
 
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Project configuration loaded from stacy.toml
@@ -146,14 +146,14 @@ impl std::fmt::Display for DependencyGroup {
 #[serde(default)]
 pub struct PackagesSection {
     /// Production dependencies: package_name -> source spec
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub dependencies: HashMap<String, PackageSpec>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dependencies: BTreeMap<String, PackageSpec>,
     /// Development dependencies: package_name -> source spec
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub dev: HashMap<String, PackageSpec>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dev: BTreeMap<String, PackageSpec>,
     /// Test dependencies: package_name -> source spec
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub test: HashMap<String, PackageSpec>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub test: BTreeMap<String, PackageSpec>,
 }
 
 impl PackagesSection {
@@ -395,34 +395,10 @@ pub fn generate_config_template() -> &'static str {
 
 [project]
 # name = "my-analysis"
-# authors = ["Your Name <you@example.com>"]
-# description = "Analysis project"
-# url = "https://github.com/user/repo"
 
-[run]
-log_dir = "logs"
-show_progress = true
-# progress_interval_seconds = 10
-# max_log_size_mb = 50
-
-# Local ado directories (prepended to S_ADO, relative to project root)
-# [paths]
-# ado = ["ado", "lib/custom"]
-
-# Package dependencies (installed to global cache at ~/.cache/stacy/packages/)
 # [packages.dependencies]
 # estout = "ssc"
 # reghdfe = "github:sergiocorreia/reghdfe"
-
-# Task definitions for `stacy task` command
-# [scripts]
-# clean = "src/01_clean.do"
-# analyze = "src/02_analyze.do"
-# all = ["clean", "analyze"]
-# outputs = { parallel = ["tables", "figures"] }
-
-# Note: Stata binary path is NOT set here (it's machine-specific).
-# Configure it in ~/.config/stacy/config.toml or use $STATA_BINARY env var.
 "#
 }
 

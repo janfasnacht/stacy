@@ -359,6 +359,10 @@ fn print_json_output(results: &[AddedPackage], output: &AddOutput) {
         })
         .collect();
 
+    let cache_dir = global_cache::cache_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+
     let json_output = json!({
         "status": output.status,
         "packages": packages,
@@ -368,7 +372,8 @@ fn print_json_output(results: &[AddedPackage], output: &AddOutput) {
             "failed": output.failed,
             "total": output.total,
             "group": output.group,
-        }
+        },
+        "cache_dir": cache_dir,
     });
 
     println!("{}", serde_json::to_string_pretty(&json_output).unwrap());
@@ -392,6 +397,9 @@ fn print_human_summary(output: &AddOutput) {
     } else {
         let dep_type = format!("{} dependencies", output.group);
         println!("Updated {}: {}", dep_type, summary.join(", "));
+    }
+    if let Ok(cache) = global_cache::cache_dir() {
+        println!("Package cache: {}", cache.display());
     }
 }
 

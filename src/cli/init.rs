@@ -9,6 +9,7 @@
 use crate::cli::output_format::OutputFormat;
 use crate::cli::output_types::{CommandOutput, InitOutput};
 use crate::error::Result;
+use crate::packages::global_cache;
 use crate::project::structure::{
     create_project_structure, create_project_structure_with_metadata, has_project_markers,
     PackageSource, PackageToInstall, ProjectMetadata,
@@ -351,6 +352,9 @@ fn format_source_display(source: &PackageSource) -> String {
 
 fn print_human_output(path: &std::path::Path, created: &[String], packages: &[PackageToInstall]) {
     println!("Initialized stacy project in: {}", path.display());
+    if let Ok(cache) = global_cache::cache_dir() {
+        println!("Package cache: {}", cache.display());
+    }
     println!();
 
     if created.is_empty() {
@@ -398,6 +402,10 @@ fn print_json_output(path: &std::path::Path, created: &[String], packages: &[Pac
         })
         .collect();
 
+    let cache_dir = global_cache::cache_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_default();
+
     let output = json!({
         "status": "success",
         "path": path.display().to_string(),
@@ -405,6 +413,7 @@ fn print_json_output(path: &std::path::Path, created: &[String], packages: &[Pac
         "created_count": created.len(),
         "packages": pkg_list,
         "package_count": pkg_list.len(),
+        "cache_dir": cache_dir,
     });
 
     println!("{}", serde_json::to_string_pretty(&output).unwrap());
