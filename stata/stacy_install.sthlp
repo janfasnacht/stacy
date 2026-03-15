@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.0.1 - AUTO-GENERATED}{...}
+{* *! version 1.1.0 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_install##syntax"}{...}
 {viewerjumpto "Description" "stacy_install##description"}{...}
 {viewerjumpto "Options" "stacy_install##options"}{...}
@@ -15,16 +15,15 @@
 {title:Syntax}
 
 {p 8 17 2}
-{cmd:stacy install} {it:package} [{cmd:,} {it:options}]
+{cmd:stacy install} [{cmd:,} {it:options}]
 
 {synoptset 20 tabbed}{...}
 {synopthdr}
 {synoptline}
 {syntab:Main}
-{synopt:{opt:from(string)}}Source: ssc or github:user/repo{p_end}
 {synopt:{opt:frozen}}Fail if lockfile doesn't match stacy.toml{p_end}
 {synopt:{opt:noverify}}Skip checksum verification{p_end}
-{synopt:{opt:with(string)}}Include dependency groups (dev, test){p_end}
+{synopt:{opt:with(string)}}Include dependency groups (comma-separated: dev, test){p_end}
 {synoptline}
 
 
@@ -39,16 +38,13 @@
 {title:Options}
 
 {phang}
-{opt from} source: ssc or github:user/repo.
-
-{phang}
 {opt frozen} fail if lockfile doesn't match stacy.toml.
 
 {phang}
 {opt no_verify} skip checksum verification.
 
 {phang}
-{opt with} include dependency groups (dev, test).
+{opt with} include dependency groups (comma-separated: dev, test).
 
 
 {marker returns}{...}

@@ -26,7 +26,7 @@ Run this in an existing directory or specify a path to create a new one.
 | Option | Description |
 |--------|-------------|
 | `--force` | Overwrite existing files |
-| `--yes` | Skip interactive prompts (always set in Stata) |
+| `-i, --interactive` | Interactive mode: prompt for project details and packages |
 
 ## Examples
 

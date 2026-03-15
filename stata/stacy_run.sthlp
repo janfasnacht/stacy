@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.0.1 - AUTO-GENERATED}{...}
+{* *! version 1.1.0 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_run##syntax"}{...}
 {viewerjumpto "Description" "stacy_run##description"}{...}
 {viewerjumpto "Options" "stacy_run##options"}{...}
@@ -22,8 +22,14 @@
 {synoptline}
 {syntab:Main}
 {synopt:{opt:allowglobal}}Allow globally installed packages{p_end}
+{synopt:{opt:cache}}Enable build cache (skip re-execution if script/deps unchanged){p_end}
+{synopt:{opt:cacheonly}}Fail if not in cache (useful for CI){p_end}
 {synopt:{opt:code(string)}}Inline Stata code{p_end}
 {synopt:{opt:directory(string)}}Run Stata in this directory{p_end}
+{synopt:{opt:engine(string)}}Stata engine to use (overrides config and auto-detection){p_end}
+{synopt:{opt:force}}Force rebuild even if cached{p_end}
+{synopt:{opt:jobs(integer)}}Max parallel jobs (default: CPU count){p_end}
+{synopt:{opt:parallel}}Run scripts in parallel{p_end}
 {synopt:{opt:profile}}Include execution metrics{p_end}
 {synopt:{opt:quietly}}Suppress output{p_end}
 {synopt:{opt:timeout(integer)}}Kill script if it exceeds this many seconds{p_end}
@@ -46,6 +52,12 @@
 {opt allow_global} allow globally installed packages.
 
 {phang}
+{opt cache} enable build cache (skip re-execution if script/deps unchanged).
+
+{phang}
+{opt cache_only} fail if not in cache (useful for ci).
+
+{phang}
 {opt cd} change to script's parent directory.
 
 {phang}
@@ -53,6 +65,18 @@
 
 {phang}
 {opt directory} run stata in this directory.
+
+{phang}
+{opt engine} stata engine to use (overrides config and auto-detection).
+
+{phang}
+{opt force} force rebuild even if cached.
+
+{phang}
+{opt jobs} max parallel jobs (default: cpu count).
+
+{phang}
+{opt parallel} run scripts in parallel.
 
 {phang}
 {opt profile} include execution metrics.

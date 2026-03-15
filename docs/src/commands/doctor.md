@@ -5,7 +5,7 @@ Run system diagnostics
 ## Synopsis
 
 ```
-stacy doctor 
+stacy doctor [OPTIONS]
 ```
 
 ## Description
@@ -13,6 +13,12 @@ stacy doctor
 Checks your system configuration and reports any issues. Verifies Stata
 installation, project detection, and write permissions. Run this first
 when troubleshooting.
+
+## Options
+
+| Option | Description |
+|--------|-------------|
+| `--refresh` | Re-extract error codes from Stata |
 
 ## Examples
 

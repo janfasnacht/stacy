@@ -7,11 +7,11 @@
 #   3. Help files (stata/*.sthlp) - generated from this schema
 #   4. Documentation (docs/src/commands/*.md) - generated from this schema
 #
-# Version: 1.0.1
-# Last Updated: 2026-01-23
+# Version: 1.1.0
+# Last Updated: 2026-03-15
 
 [meta]
-version = "1.0.1"
+version = "1.1.0"
 stata_minimum = "14.0"
 description = "Reproducible Stata Workflow Tool"
 
@@ -80,6 +80,12 @@ profile = { type = "bool", description = "Include execution metrics", stata_opti
 allow_global = { type = "bool", long = "allow-global", description = "Allow globally installed packages", stata_option = "AllowGlobal" }
 trace = { type = "int", long = "trace", description = "Enable execution tracing at given depth", stata_option = "Trace(integer)" }
 timeout = { type = "int", long = "timeout", description = "Kill script if it exceeds this many seconds", stata_option = "Timeout(integer)" }
+parallel = { type = "bool", short = "P", description = "Run scripts in parallel", stata_option = "PARALLEL" }
+jobs = { type = "int", short = "j", long = "jobs", description = "Max parallel jobs (default: CPU count)", stata_option = "Jobs(integer)" }
+cache = { type = "bool", description = "Enable build cache (skip re-execution if script/deps unchanged)", stata_option = "Cache" }
+force = { type = "bool", description = "Force rebuild even if cached", stata_option = "Force" }
+cache_only = { type = "bool", long = "cache-only", description = "Fail if not in cache (useful for CI)", stata_option = "CacheOnly" }
+engine = { type = "string", long = "engine", description = "Stata engine to use (overrides config and auto-detection)", stata_option = "Engine(string)" }
 
 [commands.run.returns]
 # Scalars (numeric values)
@@ -100,6 +106,7 @@ log_file = { type = "path", json_path = "log_file", stata_type = "local", descri
 3 = "File error (not found, permission denied)"
 4 = "Memory error"
 5 = "Internal stacy error"
+6 = "Statistical error (convergence, model problems)"
 10 = "Environment error (Stata not found)"
 
 [[commands.run.examples]]
@@ -163,6 +170,7 @@ when troubleshooting.
 see_also = ["env"]
 
 [commands.doctor.args]
+refresh = { type = "bool", description = "Re-extract error codes from Stata" }
 json = { type = "bool", description = "JSON output (internal)" }
 
 [commands.doctor.returns]
@@ -275,9 +283,7 @@ lockfile. Can also install individual packages directly from SSC or GitHub.
 see_also = ["add", "lock", "list"]
 
 [commands.install.args]
-package = { type = "string", positional = true, description = "Package name (optional)" }
-from = { type = "string", description = "Source: ssc or github:user/repo", stata_option = "From(string)" }
-with = { type = "string", long = "with", description = "Include dependency groups (dev, test)", stata_option = "With(string)" }
+with = { type = "string", long = "with", description = "Include dependency groups (comma-separated: dev, test)", stata_option = "With(string)" }
 frozen = { type = "bool", long = "frozen", description = "Fail if lockfile doesn't match stacy.toml", stata_option = "FROZEN" }
 no_verify = { type = "bool", long = "no-verify", description = "Skip checksum verification", stata_option = "NOVerify" }
 json = { type = "bool", description = "JSON output (internal)" }
@@ -374,7 +380,7 @@ see_also = ["add", "install", "../configuration/project.md"]
 [commands.init.args]
 path = { type = "path", positional = true, description = "Project directory (default: current)" }
 force = { type = "bool", description = "Overwrite existing files", stata_option = "Force" }
-yes = { type = "bool", description = "Skip interactive prompts (always set in Stata)" }
+interactive = { type = "bool", short = "i", description = "Interactive mode: prompt for project details and packages" }
 json = { type = "bool", description = "JSON output (internal)" }
 
 [commands.init.returns]
@@ -906,4 +912,5 @@ status = { type = "string", json_path = "status", stata_type = "local", descript
 3 = { name = "File Error", description = "File not found, permission denied, data errors", r_codes = "r(601), r(603), r(610), r(639), r(2000-2999)" }
 4 = { name = "Memory Error", description = "Insufficient memory", r_codes = "r(950)" }
 5 = { name = "Internal Error", description = "stacy itself failed (not Stata)" }
+6 = { name = "Statistical Error", description = "Convergence failure, model problems", r_codes = "r(400)-r(499)" }
 10 = { name = "Environment Error", description = "Stata not found or configuration invalid" }

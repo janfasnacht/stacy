@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.0.1 - AUTO-GENERATED}{...}
+{* *! version 1.1.0 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_init##syntax"}{...}
 {viewerjumpto "Description" "stacy_init##description"}{...}
 {viewerjumpto "Options" "stacy_init##options"}{...}
@@ -39,7 +39,7 @@
 {opt force} overwrite existing files.
 
 {phang}
-{opt yes} skip interactive prompts (always set in stata).
+{opt interactive} interactive mode: prompt for project details and packages.
 
 
 {marker returns}{...}

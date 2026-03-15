@@ -12,8 +12,14 @@
 
     Options:
         AllowGlobal          - Allow globally installed packages
+        Cache                - Enable build cache (skip re-execution if script/deps unchanged)
+        CacheOnly            - Fail if not in cache (useful for CI)
         Code(string)         - Inline Stata code
         Directory(string)    - Run Stata in this directory
+        Engine(string)       - Stata engine to use (overrides config and auto-detection)
+        Force                - Force rebuild even if cached
+        Jobs(integer)        - Max parallel jobs (default: CPU count)
+        PARALLEL             - Run scripts in parallel
         Profile              - Include execution metrics
         Quietly              - Suppress output
         Timeout(integer)     - Kill script if it exceeds this many seconds
@@ -32,7 +38,7 @@
 
 program define stacy_run, rclass
     version 14.0
-    syntax [anything(name=script)] [, AllowGlobal Code(string) Directory(string) Profile Quietly Timeout(string) Trace(string) Verbose]
+    syntax [anything(name=script)] [, AllowGlobal Cache CacheOnly Code(string) Directory(string) Engine(string) Force Jobs(string) PARALLEL Profile Quietly Timeout(string) Trace(string) Verbose]
 
     * Build command arguments
     local cmd "run"
@@ -45,12 +51,36 @@ program define stacy_run, rclass
         local cmd `"`cmd' --allow-global"'
     }
 
+    if "`cache'" != "" {
+        local cmd `"`cmd' --cache"'
+    }
+
+    if "`cacheonly'" != "" {
+        local cmd `"`cmd' --cache-only"'
+    }
+
     if `"`code'"' != "" {
         local cmd `"`cmd' --code "`code'""'
     }
 
     if `"`directory'"' != "" {
         local cmd `"`cmd' --directory "`directory'""'
+    }
+
+    if `"`engine'"' != "" {
+        local cmd `"`cmd' --engine "`engine'""'
+    }
+
+    if "`force'" != "" {
+        local cmd `"`cmd' --force"'
+    }
+
+    if `"`jobs'"' != "" {
+        local cmd `"`cmd' --jobs "`jobs'""'
+    }
+
+    if "`parallel'" != "" {
+        local cmd `"`cmd' --parallel"'
     }
 
     if "`profile'" != "" {

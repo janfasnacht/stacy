@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.0.1 - AUTO-GENERATED}{...}
+{* *! version 1.1.0 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_doctor##syntax"}{...}
 {viewerjumpto "Description" "stacy_doctor##description"}{...}
 {viewerjumpto "Options" "stacy_doctor##options"}{...}
@@ -15,13 +15,27 @@
 {title:Syntax}
 
 {p 8 17 2}
-{cmd:stacy doctor} 
+{cmd:stacy doctor} [{cmd:,} {it:options}]
+
+{synoptset 20 tabbed}{...}
+{synopthdr}
+{synoptline}
+{syntab:Main}
+{synoptline}
+
 
 {marker description}{...}
 {title:Description}
 
 {pstd}
 {cmd:stacy doctor} run system diagnostics.
+
+
+{marker options}{...}
+{title:Options}
+
+{phang}
+{opt refresh} re-extract error codes from stata.
 
 
 {marker returns}{...}

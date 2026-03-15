@@ -502,6 +502,144 @@ fn test_dispatcher_handles_unknown_commands() {
 }
 
 // =============================================================================
+// Schema/CLI divergence guard tests
+// =============================================================================
+
+#[test]
+fn test_run_schema_has_parallel_and_jobs() {
+    let schema = load_schema();
+    let run_args = schema
+        .get("commands")
+        .and_then(|c| c.get("run"))
+        .and_then(|r| r.get("args"))
+        .and_then(|a| a.as_table())
+        .expect("Missing run args");
+
+    assert!(
+        run_args.contains_key("parallel"),
+        "run schema missing --parallel"
+    );
+    assert!(run_args.contains_key("jobs"), "run schema missing --jobs");
+}
+
+#[test]
+fn test_run_schema_has_cache_flags() {
+    let schema = load_schema();
+    let run_args = schema
+        .get("commands")
+        .and_then(|c| c.get("run"))
+        .and_then(|r| r.get("args"))
+        .and_then(|a| a.as_table())
+        .expect("Missing run args");
+
+    assert!(run_args.contains_key("cache"), "run schema missing --cache");
+    assert!(run_args.contains_key("force"), "run schema missing --force");
+    assert!(
+        run_args.contains_key("cache_only"),
+        "run schema missing --cache-only"
+    );
+}
+
+#[test]
+fn test_run_schema_has_engine() {
+    let schema = load_schema();
+    let run_args = schema
+        .get("commands")
+        .and_then(|c| c.get("run"))
+        .and_then(|r| r.get("args"))
+        .and_then(|a| a.as_table())
+        .expect("Missing run args");
+
+    assert!(
+        run_args.contains_key("engine"),
+        "run schema missing --engine"
+    );
+}
+
+#[test]
+fn test_install_schema_no_stale_args() {
+    let schema = load_schema();
+    let install_args = schema
+        .get("commands")
+        .and_then(|c| c.get("install"))
+        .and_then(|r| r.get("args"))
+        .and_then(|a| a.as_table())
+        .expect("Missing install args");
+
+    assert!(
+        !install_args.contains_key("package"),
+        "install schema still has removed 'package' arg"
+    );
+    assert!(
+        !install_args.contains_key("from"),
+        "install schema still has removed 'from' arg"
+    );
+}
+
+#[test]
+fn test_exit_code_6_in_schema() {
+    let schema = load_schema();
+
+    // Check global exit_codes
+    let exit_codes = schema
+        .get("exit_codes")
+        .and_then(|e| e.as_table())
+        .expect("Missing exit_codes section");
+    assert!(
+        exit_codes.contains_key("6"),
+        "Global exit_codes missing code 6 (statistical error)"
+    );
+
+    // Check run command exit_codes
+    let run_exit_codes = schema
+        .get("commands")
+        .and_then(|c| c.get("run"))
+        .and_then(|r| r.get("exit_codes"))
+        .and_then(|e| e.as_table())
+        .expect("Missing run exit_codes");
+    assert!(
+        run_exit_codes.contains_key("6"),
+        "run exit_codes missing code 6 (statistical error)"
+    );
+}
+
+#[test]
+fn test_init_schema_has_interactive_not_yes() {
+    let schema = load_schema();
+    let init_args = schema
+        .get("commands")
+        .and_then(|c| c.get("init"))
+        .and_then(|r| r.get("args"))
+        .and_then(|a| a.as_table())
+        .expect("Missing init args");
+
+    assert!(
+        init_args.contains_key("interactive"),
+        "init schema missing --interactive"
+    );
+    assert!(
+        !init_args.contains_key("yes"),
+        "init schema still has removed --yes arg"
+    );
+}
+
+#[test]
+fn test_doctor_schema_has_refresh() {
+    let schema = load_schema();
+    let doctor_args = schema
+        .get("commands")
+        .and_then(|c| c.get("doctor"))
+        .and_then(|r| r.get("args"))
+        .and_then(|a| a.as_table())
+        .expect("Missing doctor args");
+
+    assert!(
+        doctor_args.contains_key("refresh"),
+        "doctor schema missing --refresh"
+    );
+}
+
+// =============================================================================
 // Generated .ado file Stata syntax validation
 // =============================================================================
 
