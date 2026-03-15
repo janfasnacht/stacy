@@ -8,7 +8,9 @@
     Run system diagnostics
 
     Syntax:
-        stacy_doctor 
+        stacy_doctor [, options]
+
+    Options:
 
     Returns:
         r(check_count         ) - Total number of checks (scalar)

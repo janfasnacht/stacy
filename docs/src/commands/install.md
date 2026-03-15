@@ -5,7 +5,7 @@ Install packages from lockfile or SSC/GitHub
 ## Synopsis
 
 ```
-stacy install <PACKAGE> [OPTIONS]
+stacy install [OPTIONS]
 ```
 
 ## Description
@@ -14,20 +14,13 @@ Installs packages defined in `stacy.lock` (or `stacy.toml` if no lockfile exists
 This ensures reproducible environments by installing exact versions from the
 lockfile. Can also install individual packages directly from SSC or GitHub.
 
-## Arguments
-
-| Argument | Description |
-|----------|-------------|
-| `<PACKAGE>` | Package name (optional) |
-
 ## Options
 
 | Option | Description |
 |--------|-------------|
-| `--from` | Source: ssc or github:user/repo |
 | `--frozen` | Fail if lockfile doesn't match stacy.toml |
 | `--no_verify` | Skip checksum verification |
-| `--with` | Include dependency groups (dev, test) |
+| `--with` | Include dependency groups (comma-separated: dev, test) |
 
 ## Examples
 

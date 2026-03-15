@@ -7,12 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Schema/CLI divergence: sync `commands.toml` with actual CLI implementation
+  - Add missing `run` flags: `--parallel`, `-j/--jobs`, `--cache`, `--force`, `--cache-only`, `--engine`
+  - Add missing exit code 6 (statistical error, r(400)-r(499)) to schema and generated docs
+  - Remove stale `install` args (`package`, `from`) that no longer exist in CLI
+  - Replace removed `init --yes` with `--interactive` in schema
+  - Add missing `doctor --refresh` to schema
+
 ### Added
 
 - `stacy run --timeout <seconds>` flag to kill long-running scripts (SIGTERM → SIGKILL escalation)
 - Stata wrappers: `Timeout(integer)` option for `stacy_run`
 - Stata wrappers: `AllowGlobal` and `Trace(integer)` options for `stacy_run`
 - Stata wrappers: `With(string)`, `FROZEN`, and `NOVerify` options for `stacy_install`
+- Stata wrappers: `PARALLEL`, `Jobs(integer)`, `Cache`, `Force`, `CacheOnly`, `Engine(string)` options for `stacy_run`
 - `[paths]` config section for project-local ado directories prepended to `S_ADO`
 - Post-install dependency scanning: after `stacy add`, scans `.ado` files for `require`/`which`/`findfile` patterns and warns about missing dependencies
 - `stacy doctor` now checks all installed packages for missing implicit dependencies

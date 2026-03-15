@@ -38,9 +38,15 @@ For interactive use where you want to quickly check a result, see `stacy eval`.
 | Option | Description |
 |--------|-------------|
 | `--allow_global` | Allow globally installed packages |
+| `--cache` | Enable build cache (skip re-execution if script/deps unchanged) |
+| `--cache_only` | Fail if not in cache (useful for CI) |
 | `--cd` | Change to script's parent directory |
 | `-c, --code` | Inline Stata code |
 | `-C, --directory` | Run Stata in this directory |
+| `--engine` | Stata engine to use (overrides config and auto-detection) |
+| `--force` | Force rebuild even if cached |
+| `-j, --jobs` | Max parallel jobs (default: CPU count) |
+| `-P, --parallel` | Run scripts in parallel |
 | `--profile` | Include execution metrics |
 | `-q, --quiet` | Suppress output |
 | `--timeout` | Kill script if it exceeds this many seconds |
@@ -134,6 +140,7 @@ stacy run --timeout 60 long_analysis.do
 | 3 | File error (not found, permission denied) |
 | 4 | Memory error |
 | 5 | Internal stacy error |
+| 6 | Statistical error (convergence, model problems) |
 | 10 | Environment error (Stata not found) |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.

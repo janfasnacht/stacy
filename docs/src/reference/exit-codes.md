@@ -12,6 +12,7 @@ stacy uses consistent exit codes to indicate success or failure type.
 | 3 | File Error | File not found, permission denied, data errors |
 | 4 | Memory Error | Insufficient memory |
 | 5 | Internal Error | stacy itself failed (not Stata) |
+| 6 | Statistical Error | Convergence failure, model problems |
 | 10 | Environment Error | Stata not found or configuration invalid |
 
 ## Stata r() Code Mapping
@@ -24,6 +25,7 @@ stacy maps Stata's r() error codes to exit codes:
 | 2 | r(198), r(199) |
 | 3 | r(601), r(603), r(610), r(639), r(2000-2999) |
 | 4 | r(950) |
+| 6 | r(400)-r(499) |
 
 ## Usage
 

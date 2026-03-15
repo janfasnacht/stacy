@@ -8,13 +8,12 @@
     Install packages from lockfile or SSC/GitHub
 
     Syntax:
-        stacy_install [package] [, options]
+        stacy_install [, options]
 
     Options:
-        From(string)         - Source: ssc or github:user/repo
         FROZEN               - Fail if lockfile doesn't match stacy.toml
         NOVerify             - Skip checksum verification
-        With(string)         - Include dependency groups (dev, test)
+        With(string)         - Include dependency groups (comma-separated: dev, test)
 
     Returns:
         r(already_installed   ) - Number already installed (scalar)
@@ -27,18 +26,10 @@
 
 program define stacy_install, rclass
     version 14.0
-    syntax [anything(name=package)] [, From(string) FROZEN NOVerify With(string)]
+    syntax [, FROZEN NOVerify With(string)]
 
     * Build command arguments
     local cmd "install"
-
-    if `"`package'"' != "" {
-        local cmd `"`cmd' "`package'""'
-    }
-
-    if `"`from'"' != "" {
-        local cmd `"`cmd' --from "`from'""'
-    }
 
     if "`frozen'" != "" {
         local cmd `"`cmd' --frozen"'
