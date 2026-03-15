@@ -6,6 +6,7 @@
 
 use crate::error::{Error, Result};
 use crate::packages::http::StacyHttpClient;
+use crate::packages::naming;
 use crate::packages::pkg_parser::{parse_pkg_file, PackageManifest};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -157,12 +158,21 @@ impl SscDownloader {
                             download.from_mirror = true;
                             Ok(download)
                         }
-                        Err(_) => Err(Error::Config(format!(
-                            "Package '{}' not found on SSC. \
-                                 Check spelling or verify the package exists at \
-                                 https://ideas.repec.org/s/boc/bocode.html",
-                            name
-                        ))),
+                        Err(_) => {
+                            let mut msg = format!("Package '{}' not found on SSC.", name);
+                            if let Some((provider, _)) = naming::find_provider(&name) {
+                                msg.push_str(&format!(
+                                    " '{}' is provided by '{}'. Run: stacy add {}",
+                                    name, provider, provider
+                                ));
+                            } else {
+                                msg.push_str(
+                                    " Check spelling or verify the package exists at \
+                                     https://ideas.repec.org/s/boc/bocode.html",
+                                );
+                            }
+                            Err(Error::Config(msg))
+                        }
                     }
                 } else {
                     Err(primary_err)
