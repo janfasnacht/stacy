@@ -171,7 +171,8 @@ pub fn execute(args: &TaskArgs) -> Result<()> {
 
     // Create Stata executor
     let executor =
-        StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::PipedDefault)?;
+        StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::PipedDefault)?
+            .with_local_ado_paths(project.resolve_local_ado_paths());
 
     // Create task executor
     let task_executor = TaskExecutor::new(&graph, &executor, &project.root).with_args(task_args);

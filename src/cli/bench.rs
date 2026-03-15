@@ -129,11 +129,16 @@ pub fn execute(args: &BenchArgs) -> Result<()> {
 
     // Find project
     let project = Project::find()?;
+    let local_ado_paths: Vec<std::path::PathBuf> = project
+        .as_ref()
+        .map(|p| p.resolve_local_ado_paths())
+        .unwrap_or_default();
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     // Create executor (quiet mode for benchmarking)
     let engine_ref = args.engine.as_deref();
-    let executor = StataExecutor::try_new(engine_ref, Verbosity::Quiet)?;
+    let executor =
+        StataExecutor::try_new(engine_ref, Verbosity::Quiet)?.with_local_ado_paths(local_ado_paths);
 
     // Print header
     if !args.quiet && format == OutputFormat::Human {

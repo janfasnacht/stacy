@@ -98,10 +98,20 @@ pub fn ensure_package_cache_dir(name: &str, version: &str) -> Result<PathBuf> {
 /// With `allow_global = true`, also includes SITE, PERSONAL, PLUS, OLDPLACE
 /// for convenience during development.
 ///
-/// Strict format: `{pkg1_cache};{pkg2_cache};...;BASE`
-/// Global format: `{pkg1_cache};{pkg2_cache};...;BASE;SITE;PERSONAL;PLUS;OLDPLACE`
-pub fn build_s_ado(lockfile: &Lockfile, allow_global: bool) -> Result<String> {
+/// `local_ado_paths` are prepended in declared order before package cache paths.
+///
+/// Format: `{local_ado_1};...;{pkg1_cache};{pkg2_cache};...;BASE[;SITE;PERSONAL;PLUS;OLDPLACE]`
+pub fn build_s_ado(
+    lockfile: &Lockfile,
+    allow_global: bool,
+    local_ado_paths: &[PathBuf],
+) -> Result<String> {
     let mut paths = Vec::new();
+
+    // Prepend local ado paths in declared order
+    for local_path in local_ado_paths {
+        paths.push(local_path.display().to_string());
+    }
 
     // Sort packages alphabetically for deterministic S_ADO order
     let mut sorted_packages: Vec<_> = lockfile.packages.iter().collect();
@@ -130,12 +140,20 @@ pub fn build_s_ado(lockfile: &Lockfile, allow_global: bool) -> Result<String> {
 ///
 /// Only includes packages whose group is in the specified list.
 /// Uses strict mode by default (only locked packages + BASE).
+///
+/// `local_ado_paths` are prepended in declared order before package cache paths.
 pub fn build_s_ado_for_groups(
     lockfile: &Lockfile,
     groups: &[&str],
     allow_global: bool,
+    local_ado_paths: &[PathBuf],
 ) -> Result<String> {
     let mut paths = Vec::new();
+
+    // Prepend local ado paths in declared order
+    for local_path in local_ado_paths {
+        paths.push(local_path.display().to_string());
+    }
 
     // Sort packages alphabetically for deterministic S_ADO order
     let mut sorted_packages: Vec<_> = lockfile.packages.iter().collect();
@@ -453,7 +471,7 @@ mod tests {
             };
 
             // Strict mode (default): only BASE
-            let s_ado = build_s_ado(&lockfile, false).unwrap();
+            let s_ado = build_s_ado(&lockfile, false, &[]).unwrap();
             assert_eq!(s_ado, "BASE");
         });
     }
@@ -469,7 +487,7 @@ mod tests {
             };
 
             // Allow global: includes all standard paths
-            let s_ado = build_s_ado(&lockfile, true).unwrap();
+            let s_ado = build_s_ado(&lockfile, true, &[]).unwrap();
             assert_eq!(s_ado, "BASE;SITE;PERSONAL;PLUS;OLDPLACE");
         });
     }
@@ -511,7 +529,7 @@ mod tests {
             };
 
             // Strict mode: packages + BASE only
-            let s_ado = build_s_ado(&lockfile, false).unwrap();
+            let s_ado = build_s_ado(&lockfile, false, &[]).unwrap();
 
             // Should contain paths to both packages
             assert!(s_ado.contains(&pkg_path_str("estout", "2024.03.15")));
@@ -550,7 +568,7 @@ mod tests {
             };
 
             // Allow global: packages + all standard paths
-            let s_ado = build_s_ado(&lockfile, true).unwrap();
+            let s_ado = build_s_ado(&lockfile, true, &[]).unwrap();
 
             assert!(s_ado.contains(&pkg_path_str("estout", "2024.03.15")));
             assert!(s_ado.ends_with(";BASE;SITE;PERSONAL;PLUS;OLDPLACE"));
@@ -687,7 +705,7 @@ mod tests {
             };
 
             // Filter to production only (strict mode)
-            let s_ado = build_s_ado_for_groups(&lockfile, &["production"], false).unwrap();
+            let s_ado = build_s_ado_for_groups(&lockfile, &["production"], false, &[]).unwrap();
 
             assert!(s_ado.contains(&pkg_path_str("estout", "2024.03.15")));
             assert!(!s_ado.contains("testpkg")); // dev package excluded
@@ -744,7 +762,8 @@ mod tests {
             };
 
             // Filter to production and dev (allow global mode)
-            let s_ado = build_s_ado_for_groups(&lockfile, &["production", "dev"], true).unwrap();
+            let s_ado =
+                build_s_ado_for_groups(&lockfile, &["production", "dev"], true, &[]).unwrap();
 
             assert!(s_ado.contains("prod_pkg"));
             assert!(s_ado.contains("dev_pkg"));
@@ -930,9 +949,9 @@ mod tests {
             };
 
             // Call multiple times — all outputs must be identical
-            let first = build_s_ado(&lockfile, false).unwrap();
+            let first = build_s_ado(&lockfile, false, &[]).unwrap();
             for _ in 0..10 {
-                assert_eq!(build_s_ado(&lockfile, false).unwrap(), first);
+                assert_eq!(build_s_ado(&lockfile, false, &[]).unwrap(), first);
             }
 
             // Packages must appear in alphabetical order (alpha, middle, zebra)
@@ -1008,6 +1027,118 @@ mod tests {
             // Should not error when removing a package that doesn't exist
             let result = remove_cached_package("nonexistent", "1.0.0");
             assert!(result.is_ok());
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_s_ado_with_local_paths_prepended() {
+        with_test_cache(|_temp| {
+            use crate::project::{PackageEntry, PackageSource};
+
+            let mut packages = HashMap::new();
+            packages.insert(
+                "estout".to_string(),
+                PackageEntry {
+                    version: "2024.03.15".to_string(),
+                    source: PackageSource::SSC {
+                        name: "estout".to_string(),
+                    },
+                    checksum: None,
+                    group: "production".to_string(),
+                },
+            );
+
+            let lockfile = Lockfile {
+                version: "1".to_string(),
+                stacy_version: None,
+                packages,
+            };
+
+            let local_paths = vec![
+                PathBuf::from("/project/ado"),
+                PathBuf::from("/project/lib/custom"),
+            ];
+            let s_ado = build_s_ado(&lockfile, false, &local_paths).unwrap();
+
+            // Local paths should come first
+            assert!(s_ado.starts_with("/project/ado;/project/lib/custom;"));
+            // Then package cache paths
+            assert!(s_ado.contains(&pkg_path_str("estout", "2024.03.15")));
+            // Then BASE
+            assert!(s_ado.ends_with(";BASE"));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_s_ado_with_local_paths_preserves_order() {
+        with_test_cache(|_temp| {
+            let lockfile = Lockfile {
+                version: "1".to_string(),
+                stacy_version: None,
+                packages: HashMap::new(),
+            };
+
+            let local_paths = vec![
+                PathBuf::from("/first"),
+                PathBuf::from("/second"),
+                PathBuf::from("/third"),
+            ];
+            let s_ado = build_s_ado(&lockfile, false, &local_paths).unwrap();
+            assert_eq!(s_ado, "/first;/second;/third;BASE");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_s_ado_local_paths_only_no_packages() {
+        with_test_cache(|_temp| {
+            let lockfile = Lockfile {
+                version: "1".to_string(),
+                stacy_version: None,
+                packages: HashMap::new(),
+            };
+
+            let local_paths = vec![PathBuf::from("/project/ado")];
+            let s_ado = build_s_ado(&lockfile, false, &local_paths).unwrap();
+            assert_eq!(s_ado, "/project/ado;BASE");
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_s_ado_for_groups_with_local_paths() {
+        with_test_cache(|_temp| {
+            use crate::project::{PackageEntry, PackageSource};
+
+            let mut packages = HashMap::new();
+            packages.insert(
+                "estout".to_string(),
+                PackageEntry {
+                    version: "2024.03.15".to_string(),
+                    source: PackageSource::SSC {
+                        name: "estout".to_string(),
+                    },
+                    checksum: None,
+                    group: "production".to_string(),
+                },
+            );
+
+            let lockfile = Lockfile {
+                version: "1".to_string(),
+                stacy_version: None,
+                packages,
+            };
+
+            let local_paths = vec![PathBuf::from("/project/ado")];
+            let s_ado =
+                build_s_ado_for_groups(&lockfile, &["production"], false, &local_paths).unwrap();
+
+            // Local paths first, then package paths, then BASE
+            assert!(s_ado.starts_with("/project/ado;"));
+            assert!(s_ado.contains(&pkg_path_str("estout", "2024.03.15")));
+            assert!(s_ado.ends_with(";BASE"));
         });
     }
 }

@@ -286,6 +286,14 @@ fn read_stdin() -> Result<String> {
     Ok(buffer)
 }
 
+/// Resolve `config.paths.ado` entries relative to project root into absolute paths.
+fn resolve_local_ado_paths(project: &Option<crate::project::Project>) -> Vec<PathBuf> {
+    match project {
+        Some(p) => p.resolve_local_ado_paths(),
+        None => Vec::new(),
+    }
+}
+
 /// Main entry point - dispatches to appropriate execution mode
 pub fn execute(args: &RunArgs) -> Result<()> {
     use std::process;
@@ -429,9 +437,11 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
     }
 
     let project = crate::project::Project::find()?;
+    let local_ado_paths = resolve_local_ado_paths(&project);
     let engine_ref = args.engine.as_deref();
-    let executor =
-        StataExecutor::try_new(engine_ref, verbosity)?.with_allow_global(args.allow_global);
+    let executor = StataExecutor::try_new(engine_ref, verbosity)?
+        .with_allow_global(args.allow_global)
+        .with_local_ado_paths(local_ado_paths);
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     if let Some(ref mut m) = metrics {
@@ -673,9 +683,11 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
         m.start_phase("setup");
     }
 
+    let local_ado_paths = resolve_local_ado_paths(&project);
     let engine_ref = args.engine.as_deref();
-    let executor =
-        StataExecutor::try_new(engine_ref, verbosity)?.with_allow_global(args.allow_global);
+    let executor = StataExecutor::try_new(engine_ref, verbosity)?
+        .with_allow_global(args.allow_global)
+        .with_local_ado_paths(local_ado_paths);
 
     if let Some(ref mut m) = metrics {
         m.end_phase("setup");
@@ -908,9 +920,11 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
 
     // Create executor
     let project = crate::project::Project::find()?;
+    let local_ado_paths = resolve_local_ado_paths(&project);
     let engine_ref = args.engine.as_deref();
-    let executor =
-        StataExecutor::try_new(engine_ref, verbosity)?.with_allow_global(args.allow_global);
+    let executor = StataExecutor::try_new(engine_ref, verbosity)?
+        .with_allow_global(args.allow_global)
+        .with_local_ado_paths(local_ado_paths);
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     let start = Instant::now();
@@ -1062,9 +1076,11 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
 
     // Create executor
     let project = crate::project::Project::find()?;
+    let local_ado_paths = resolve_local_ado_paths(&project);
     let engine_ref = args.engine.as_deref();
-    let executor =
-        StataExecutor::try_new(engine_ref, verbosity)?.with_allow_global(args.allow_global);
+    let executor = StataExecutor::try_new(engine_ref, verbosity)?
+        .with_allow_global(args.allow_global)
+        .with_local_ado_paths(local_ado_paths);
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     if !args.quiet && format == OutputFormat::Human {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `[paths]` config section for project-local ado directories prepended to `S_ADO`
+
 ## [1.1.0] - 2026-02-22
 
 ### Added

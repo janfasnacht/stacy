@@ -27,6 +27,8 @@ pub struct StataExecutor {
     /// Allow global packages (SITE, PERSONAL, PLUS, OLDPLACE) in addition to locked packages.
     /// Default is false (strict mode) - only locked packages and BASE are available.
     allow_global: bool,
+    /// Local ado directories to prepend to S_ADO (resolved to absolute paths).
+    local_ado_paths: Vec<PathBuf>,
 }
 
 impl Default for StataExecutor {
@@ -69,6 +71,7 @@ impl StataExecutor {
             verbosity,
             progress_interval: Duration::from_millis(100),
             allow_global: false,
+            local_ado_paths: Vec::new(),
         })
     }
 
@@ -79,6 +82,7 @@ impl StataExecutor {
             verbosity: verbosity::Verbosity::PipedDefault,
             progress_interval: Duration::from_millis(100),
             allow_global: false,
+            local_ado_paths: Vec::new(),
         }
     }
 
@@ -91,6 +95,12 @@ impl StataExecutor {
     /// Allow global packages (SITE, PERSONAL, PLUS, OLDPLACE) in addition to locked packages
     pub fn with_allow_global(mut self, allow: bool) -> Self {
         self.allow_global = allow;
+        self
+    }
+
+    /// Set local ado directories to prepend to S_ADO
+    pub fn with_local_ado_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.local_ado_paths = paths;
         self
     }
 
@@ -143,6 +153,9 @@ impl StataExecutor {
             options = options.with_args(args);
         }
         options = options.with_allow_global(self.allow_global);
+        if !self.local_ado_paths.is_empty() {
+            options = options.with_local_ado_paths(self.local_ado_paths.clone());
+        }
         if let Some(dir) = working_dir {
             options = options.with_working_dir(dir);
         }
@@ -161,6 +174,7 @@ impl StataExecutor {
                         match crate::packages::global_cache::build_s_ado(
                             &lockfile,
                             self.allow_global,
+                            &self.local_ado_paths,
                         ) {
                             Ok(s_ado) => {
                                 eprintln!("  S_ADO: {}", s_ado);
@@ -171,7 +185,23 @@ impl StataExecutor {
                             Err(e) => eprintln!("  S_ADO: error building path: {}", e),
                         }
                     }
-                    Ok(None) => {} // No lockfile — no S_ADO to display
+                    Ok(None) => {
+                        if !self.local_ado_paths.is_empty() {
+                            let empty_lockfile = crate::project::Lockfile {
+                                version: "1".to_string(),
+                                stacy_version: None,
+                                packages: std::collections::HashMap::new(),
+                            };
+                            match crate::packages::global_cache::build_s_ado(
+                                &empty_lockfile,
+                                self.allow_global,
+                                &self.local_ado_paths,
+                            ) {
+                                Ok(s_ado) => eprintln!("  S_ADO: {}", s_ado),
+                                Err(e) => eprintln!("  S_ADO: error building path: {}", e),
+                            }
+                        }
+                    }
                     Err(e) => eprintln!("  S_ADO: error loading lockfile: {}", e),
                 }
             }

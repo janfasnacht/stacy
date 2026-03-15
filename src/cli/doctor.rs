@@ -142,6 +142,7 @@ fn run_all_checks() -> Result<Vec<DiagnosticResult>> {
         check_stata_binary(),
         check_project(),
         check_config(),
+        check_local_ado_paths(),
         check_cache_dir(),
         check_error_codes(),
         check_write_permissions(),
@@ -235,6 +236,72 @@ fn check_config() -> DiagnosticResult {
             status: CheckStatus::Fail,
             message: format!("Error loading config: {}", e),
             suggestion: Some("Check stacy.toml syntax".to_string()),
+        },
+    }
+}
+
+fn check_local_ado_paths() -> DiagnosticResult {
+    match Project::find() {
+        Ok(Some(project)) => {
+            let config = match &project.config {
+                Some(c) => c,
+                None => {
+                    return DiagnosticResult {
+                        name: "Local Ado Paths".to_string(),
+                        status: CheckStatus::Pass,
+                        message: "No paths configured".to_string(),
+                        suggestion: None,
+                    }
+                }
+            };
+
+            if config.paths.ado.is_empty() {
+                return DiagnosticResult {
+                    name: "Local Ado Paths".to_string(),
+                    status: CheckStatus::Pass,
+                    message: "No paths configured".to_string(),
+                    suggestion: None,
+                };
+            }
+
+            let mut missing = Vec::new();
+            for rel_path in &config.paths.ado {
+                let abs_path = project.root.join(rel_path);
+                if !abs_path.exists() {
+                    missing.push(rel_path.display().to_string());
+                }
+            }
+
+            if missing.is_empty() {
+                DiagnosticResult {
+                    name: "Local Ado Paths".to_string(),
+                    status: CheckStatus::Pass,
+                    message: format!("{} path(s) configured, all exist", config.paths.ado.len()),
+                    suggestion: None,
+                }
+            } else {
+                DiagnosticResult {
+                    name: "Local Ado Paths".to_string(),
+                    status: CheckStatus::Warn,
+                    message: format!("Missing directories: {}", missing.join(", ")),
+                    suggestion: Some(
+                        "Create the directories or remove them from [paths].ado in stacy.toml"
+                            .to_string(),
+                    ),
+                }
+            }
+        }
+        Ok(None) => DiagnosticResult {
+            name: "Local Ado Paths".to_string(),
+            status: CheckStatus::Pass,
+            message: "No project found".to_string(),
+            suggestion: None,
+        },
+        Err(_) => DiagnosticResult {
+            name: "Local Ado Paths".to_string(),
+            status: CheckStatus::Pass,
+            message: "Could not check (config error)".to_string(),
+            suggestion: None,
         },
     }
 }

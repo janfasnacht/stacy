@@ -210,17 +210,17 @@ fn test_env_strict_mode_excludes_global_paths() {
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let s_ado = json["s_ado"].as_array().unwrap();
-    let s_ado_text: Vec<&str> = s_ado.iter().map(|v| v.as_str().unwrap()).collect();
+    let s_ado_paths: Vec<&str> = s_ado.iter().map(|v| v["path"].as_str().unwrap()).collect();
 
     // Should have BASE as last entry
     assert_eq!(
-        s_ado_text.last().unwrap(),
+        s_ado_paths.last().unwrap(),
         &"BASE",
         "Last S_ADO entry must be BASE"
     );
 
     // Should NOT contain global paths
-    let joined = s_ado_text.join(";");
+    let joined = s_ado_paths.join(";");
     assert!(
         !joined.contains("SITE"),
         "S_ADO must not contain SITE in strict mode"
@@ -314,22 +314,28 @@ name = "middle"
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
 
     let s_ado = json["s_ado"].as_array().unwrap();
-    let s_ado_text: Vec<&str> = s_ado.iter().map(|v| v.as_str().unwrap()).collect();
+    let s_ado_paths: Vec<&str> = s_ado.iter().map(|v| v["path"].as_str().unwrap()).collect();
 
     // Last entry should be BASE
-    assert_eq!(s_ado_text.last().unwrap(), &"BASE");
+    assert_eq!(s_ado_paths.last().unwrap(), &"BASE");
 
     // Package entries (excluding BASE)
-    let pkg_entries: Vec<&&str> = s_ado_text.iter().filter(|s| **s != "BASE").collect();
+    let pkg_entries: Vec<&&str> = s_ado_paths.iter().filter(|s| **s != "BASE").collect();
     assert_eq!(pkg_entries.len(), 3, "Should have 3 package paths");
 
     // They should appear in alpha, middle, zebra order
-    let alpha_pos = s_ado_text.iter().position(|s| s.contains("alpha")).unwrap();
-    let middle_pos = s_ado_text
+    let alpha_pos = s_ado_paths
+        .iter()
+        .position(|s| s.contains("alpha"))
+        .unwrap();
+    let middle_pos = s_ado_paths
         .iter()
         .position(|s| s.contains("middle"))
         .unwrap();
-    let zebra_pos = s_ado_text.iter().position(|s| s.contains("zebra")).unwrap();
+    let zebra_pos = s_ado_paths
+        .iter()
+        .position(|s| s.contains("zebra"))
+        .unwrap();
 
     assert!(
         alpha_pos < middle_pos && middle_pos < zebra_pos,

@@ -57,6 +57,10 @@ pub fn execute(args: &TestArgs) -> Result<()> {
 
     // Find project (optional for test command)
     let project = Project::find()?;
+    let local_ado_paths: Vec<std::path::PathBuf> = project
+        .as_ref()
+        .map(|p| p.resolve_local_ado_paths())
+        .unwrap_or_default();
     let project_root = project
         .as_ref()
         .map(|p| p.root.clone())
@@ -65,7 +69,7 @@ pub fn execute(args: &TestArgs) -> Result<()> {
     // Handle specific test
     if let Some(ref test_name) = args.test {
         if let Some(test) = find_test(&project_root, test_name)? {
-            return run_single_test(args, &project_root, &test);
+            return run_single_test(args, &project_root, &test, &local_ado_paths);
         } else {
             let msg = format!("Test '{}' not found", test_name);
             if format.is_machine_readable() {
@@ -126,19 +130,21 @@ pub fn execute(args: &TestArgs) -> Result<()> {
     }
 
     // Run tests
-    run_tests(args, &project_root, &tests)
+    run_tests(args, &project_root, &tests, &local_ado_paths)
 }
 
 fn run_single_test(
     args: &TestArgs,
     project_root: &std::path::Path,
     test: &crate::test::discovery::TestFile,
+    local_ado_paths: &[std::path::PathBuf],
 ) -> Result<()> {
     let format = args.format;
 
     // Create Stata executor with Quiet verbosity to suppress error context
     // (we show our own error messages in test results)
-    let executor = StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::Quiet)?;
+    let executor = StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::Quiet)?
+        .with_local_ado_paths(local_ado_paths.to_vec());
 
     // Create test runner
     let runner = TestRunner::new(&executor, project_root);
@@ -186,12 +192,14 @@ fn run_tests(
     args: &TestArgs,
     project_root: &std::path::Path,
     tests: &[crate::test::discovery::TestFile],
+    local_ado_paths: &[std::path::PathBuf],
 ) -> Result<()> {
     let format = args.format;
 
     // Create Stata executor with Quiet verbosity to suppress error context
     // (we show our own error messages in test results)
-    let executor = StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::Quiet)?;
+    let executor = StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::Quiet)?
+        .with_local_ado_paths(local_ado_paths.to_vec());
 
     // Create test runner
     let runner = TestRunner::new(&executor, project_root).with_parallel(args.parallel);
