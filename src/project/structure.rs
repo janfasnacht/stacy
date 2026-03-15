@@ -7,6 +7,7 @@
 //! Other files (stacy.lock, ado/) are created on demand by `stacy install`.
 
 use crate::error::{Error, Result};
+use crate::project::config;
 use std::path::Path;
 
 /// Create minimal project structure (stacy.toml + .gitignore only).
@@ -35,7 +36,7 @@ pub fn create_project_structure(root: &Path, force: bool) -> Result<Vec<String>>
     // Create stacy.toml
     let config_path = root.join("stacy.toml");
     if !config_path.exists() || force {
-        std::fs::write(&config_path, generate_config_template()).map_err(|e| {
+        std::fs::write(&config_path, config::generate_config_template()).map_err(|e| {
             Error::Config(format!(
                 "Failed to create stacy.toml at {}: {}",
                 config_path.display(),
@@ -104,35 +105,6 @@ pub enum PackageSource {
     },
 }
 
-/// Generate stacy.toml template with commented defaults.
-fn generate_config_template() -> &'static str {
-    r#"# stacy project configuration
-# See: https://github.com/janfasnacht/stacy
-
-[project]
-# name = "my-analysis"
-# authors = ["Your Name <you@example.com>"]
-# description = "Analysis project"
-# url = "https://github.com/user/repo"
-
-[run]
-# show_progress = true
-# progress_interval_seconds = 10
-
-# Local ado directories (prepended to S_ADO, relative to project root)
-# [paths]
-# ado = ["ado", "lib/custom"]
-
-# Package dependencies (installed to global cache at ~/.cache/stacy/packages/)
-# [packages.dependencies]
-# estout = "ssc"
-# reghdfe = "github:sergiocorreia/reghdfe"
-
-# Note: Stata binary path is NOT set here (it's machine-specific).
-# Configure it in ~/.config/stacy/config.toml or use $STATA_BINARY env var.
-"#
-}
-
 /// Generate stacy.toml with provided metadata.
 pub fn generate_config_with_metadata(metadata: &ProjectMetadata) -> String {
     let mut config = String::from(
@@ -159,8 +131,6 @@ pub fn generate_config_with_metadata(metadata: &ProjectMetadata) -> String {
     if let Some(ref url) = metadata.url {
         config.push_str(&format!("url = \"{}\"\n", url));
     }
-
-    config.push_str("\n[run]\nshow_progress = true\n");
 
     config
 }
@@ -294,7 +264,7 @@ mod tests {
 
     #[test]
     fn test_config_template_is_valid_toml() {
-        let template = generate_config_template();
+        let template = config::generate_config_template();
         let _: toml::Value = toml::from_str(template).unwrap();
     }
 

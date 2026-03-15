@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `[paths]` config section for project-local ado directories prepended to `S_ADO`
 - Post-install dependency scanning: after `stacy add`, scans `.ado` files for `require`/`which`/`findfile` patterns and warns about missing dependencies
 - `stacy doctor` now checks all installed packages for missing implicit dependencies
+- `stacy init` and `stacy add` now show the package cache location in output
+
+### Changed
+
+- `stacy init` template trimmed to essentials (`[project]` and `[packages.dependencies]` examples only)
+- Package dependencies in `stacy.toml` are now written in alphabetical order
 
 ## [1.1.0] - 2026-02-22
 
