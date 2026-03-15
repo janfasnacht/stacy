@@ -21,10 +21,12 @@
 {synopthdr}
 {synoptline}
 {syntab:Main}
+{synopt:{opt:allowglobal}}Allow globally installed packages{p_end}
 {synopt:{opt:code(string)}}Inline Stata code{p_end}
 {synopt:{opt:directory(string)}}Run Stata in this directory{p_end}
 {synopt:{opt:profile}}Include execution metrics{p_end}
 {synopt:{opt:quietly}}Suppress output{p_end}
+{synopt:{opt:trace(integer)}}Enable execution tracing at given depth{p_end}
 {synopt:{opt:verbose}}Extra output{p_end}
 {synoptline}
 
@@ -38,6 +40,9 @@
 
 {marker options}{...}
 {title:Options}
+
+{phang}
+{opt allow_global} allow globally installed packages.
 
 {phang}
 {opt cd} change to script's parent directory.

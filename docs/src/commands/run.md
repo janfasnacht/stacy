@@ -37,6 +37,7 @@ For interactive use where you want to quickly check a result, see `stacy eval`.
 
 | Option | Description |
 |--------|-------------|
+| `--allow_global` | Allow globally installed packages |
 | `--cd` | Change to script's parent directory |
 | `-c, --code` | Inline Stata code |
 | `-C, --directory` | Run Stata in this directory |

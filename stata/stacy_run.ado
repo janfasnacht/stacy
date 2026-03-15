@@ -11,10 +11,12 @@
         stacy_run [script] [, options]
 
     Options:
+        AllowGlobal          - Allow globally installed packages
         Code(string)         - Inline Stata code
         Directory(string)    - Run Stata in this directory
         Profile              - Include execution metrics
         Quietly              - Suppress output
+        Trace(integer)       - Enable execution tracing at given depth
         Verbose              - Extra output
 
     Returns:
@@ -29,13 +31,17 @@
 
 program define stacy_run, rclass
     version 14.0
-    syntax [anything(name=script)] [, Code(string) Directory(string) Profile Quietly Verbose]
+    syntax [anything(name=script)] [, AllowGlobal Code(string) Directory(string) Profile Quietly Trace(string) Verbose]
 
     * Build command arguments
     local cmd "run"
 
     if `"`script'"' != "" {
         local cmd `"`cmd' "`script'""'
+    }
+
+    if "`allowglobal'" != "" {
+        local cmd `"`cmd' --allow-global"'
     }
 
     if `"`code'"' != "" {
@@ -52,6 +58,10 @@ program define stacy_run, rclass
 
     if "`quietly'" != "" {
         local cmd `"`cmd' --quiet"'
+    }
+
+    if `"`trace'"' != "" {
+        local cmd `"`cmd' --trace "`trace'""'
     }
 
     if "`verbose'" != "" {
