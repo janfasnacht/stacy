@@ -16,6 +16,7 @@
         Directory(string)    - Run Stata in this directory
         Profile              - Include execution metrics
         Quietly              - Suppress output
+        Timeout(integer)     - Kill script if it exceeds this many seconds
         Trace(integer)       - Enable execution tracing at given depth
         Verbose              - Extra output
 
@@ -31,7 +32,7 @@
 
 program define stacy_run, rclass
     version 14.0
-    syntax [anything(name=script)] [, AllowGlobal Code(string) Directory(string) Profile Quietly Trace(string) Verbose]
+    syntax [anything(name=script)] [, AllowGlobal Code(string) Directory(string) Profile Quietly Timeout(string) Trace(string) Verbose]
 
     * Build command arguments
     local cmd "run"
@@ -58,6 +59,10 @@ program define stacy_run, rclass
 
     if "`quietly'" != "" {
         local cmd `"`cmd' --quiet"'
+    }
+
+    if `"`timeout'"' != "" {
+        local cmd `"`cmd' --timeout "`timeout'""'
     }
 
     if `"`trace'"' != "" {

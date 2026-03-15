@@ -26,6 +26,7 @@
 {synopt:{opt:directory(string)}}Run Stata in this directory{p_end}
 {synopt:{opt:profile}}Include execution metrics{p_end}
 {synopt:{opt:quietly}}Suppress output{p_end}
+{synopt:{opt:timeout(integer)}}Kill script if it exceeds this many seconds{p_end}
 {synopt:{opt:trace(integer)}}Enable execution tracing at given depth{p_end}
 {synopt:{opt:verbose}}Extra output{p_end}
 {synoptline}
@@ -58,6 +59,9 @@
 
 {phang}
 {opt quiet} suppress output.
+
+{phang}
+{opt timeout} kill script if it exceeds this many seconds.
 
 {phang}
 {opt trace} enable execution tracing at given depth.

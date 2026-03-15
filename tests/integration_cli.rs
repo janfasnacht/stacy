@@ -3341,3 +3341,30 @@ fn test_add_invalid_source_shows_all_options() {
         .failure()
         .stderr(predicate::str::contains("net:").or(predicate::str::contains("local:")));
 }
+
+// =============================================================================
+// timeout flag
+// =============================================================================
+
+#[test]
+fn test_run_timeout_flag_exists() {
+    stacy()
+        .arg("run")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--timeout"))
+        .stdout(predicate::str::contains("SECONDS"));
+}
+
+#[test]
+fn test_run_timeout_rejects_non_numeric() {
+    stacy()
+        .arg("run")
+        .arg("--timeout")
+        .arg("abc")
+        .arg("-c")
+        .arg("display 1")
+        .assert()
+        .failure();
+}
