@@ -7,6 +7,7 @@ pub mod http;
 pub mod installer;
 pub mod local;
 pub mod lockfile;
+pub mod naming;
 pub mod net;
 pub mod pkg_parser;
 pub mod ssc;
