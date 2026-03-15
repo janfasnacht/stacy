@@ -119,6 +119,10 @@ fn generate_config_template() -> &'static str {
 # show_progress = true
 # progress_interval_seconds = 10
 
+# Local ado directories (prepended to S_ADO, relative to project root)
+# [paths]
+# ado = ["ado", "lib/custom"]
+
 # Package dependencies (installed to global cache at ~/.cache/stacy/packages/)
 # [packages.dependencies]
 # estout = "ssc"

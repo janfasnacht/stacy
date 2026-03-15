@@ -43,6 +43,8 @@ pub struct RunOptions<'a> {
     /// Optional working directory for Stata execution.
     /// When set, Stata runs in this directory instead of the invoking directory.
     pub working_dir: Option<&'a Path>,
+    /// Local ado directories to prepend to S_ADO (resolved to absolute paths).
+    pub local_ado_paths: Vec<PathBuf>,
 }
 
 impl<'a> RunOptions<'a> {
@@ -54,6 +56,7 @@ impl<'a> RunOptions<'a> {
             args: std::collections::HashMap::new(),
             allow_global: false,
             working_dir: None,
+            local_ado_paths: Vec::new(),
         }
     }
 
@@ -79,6 +82,11 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_working_dir(mut self, dir: &'a Path) -> Self {
         self.working_dir = Some(dir);
+        self
+    }
+
+    pub fn with_local_ado_paths(mut self, paths: Vec<PathBuf>) -> Self {
+        self.local_ado_paths = paths;
         self
     }
 }
@@ -127,15 +135,35 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
         cmd.current_dir(dir);
     }
 
-    // Set S_ADO from lockfile packages in global cache.
+    // Set S_ADO from lockfile packages in global cache + local ado paths.
     // By default (strict mode), only locked packages + BASE are available.
     // With allow_global, also includes SITE, PERSONAL, PLUS, OLDPLACE.
     //
     // Missing lockfile = OK (non-stacy project or no packages yet).
     // Corrupt/unreadable lockfile = hard error (isolation was intended).
     if let Some(project_root) = options.project_root {
-        if let Some(lockfile) = load_lockfile(project_root)? {
-            let s_ado = global_cache::build_s_ado(&lockfile, options.allow_global)?;
+        let lockfile_opt = load_lockfile(project_root)?;
+        let has_local_paths = !options.local_ado_paths.is_empty();
+
+        if let Some(lockfile) = &lockfile_opt {
+            let s_ado = global_cache::build_s_ado(
+                lockfile,
+                options.allow_global,
+                &options.local_ado_paths,
+            )?;
+            cmd.env("S_ADO", s_ado);
+        } else if has_local_paths {
+            // No lockfile but local paths configured — still set S_ADO
+            let empty_lockfile = crate::project::Lockfile {
+                version: "1".to_string(),
+                stacy_version: None,
+                packages: std::collections::HashMap::new(),
+            };
+            let s_ado = global_cache::build_s_ado(
+                &empty_lockfile,
+                options.allow_global,
+                &options.local_ado_paths,
+            )?;
             cmd.env("S_ADO", s_ado);
         }
     }
@@ -337,6 +365,38 @@ mod tests {
         assert!(
             !err_msg.contains("stacy.lock") && !err_msg.contains("lockfile"),
             "Missing lockfile should not produce a lockfile error: {}",
+            err_msg
+        );
+    }
+
+    #[test]
+    fn test_run_options_with_local_ado_paths() {
+        let paths = vec![
+            PathBuf::from("/project/ado"),
+            PathBuf::from("/project/lib/custom"),
+        ];
+        let options = RunOptions::new("stata-mp").with_local_ado_paths(paths.clone());
+
+        assert_eq!(options.local_ado_paths, paths);
+    }
+
+    #[test]
+    fn test_local_paths_set_s_ado_without_lockfile() {
+        let temp = tempfile::TempDir::new().unwrap();
+        // No stacy.lock — but local ado paths are configured
+
+        let options = RunOptions::new("/nonexistent/stata-binary")
+            .with_project_root(temp.path())
+            .with_local_ado_paths(vec![PathBuf::from("/project/ado")]);
+
+        // Spawn will fail (no binary), but the error should be about spawning,
+        // not about lockfile — proving local paths don't require a lockfile
+        let result = run_stata(Path::new("test.do"), options);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            !err_msg.contains("stacy.lock") && !err_msg.contains("lockfile"),
+            "Local paths without lockfile should not produce a lockfile error: {}",
             err_msg
         );
     }

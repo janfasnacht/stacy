@@ -156,6 +156,14 @@ impl Project {
         &self.root
     }
 
+    /// Resolve `[paths].ado` entries to absolute paths relative to project root.
+    pub fn resolve_local_ado_paths(&self) -> Vec<PathBuf> {
+        match &self.config {
+            Some(c) => c.paths.ado.iter().map(|rel| self.root.join(rel)).collect(),
+            None => Vec::new(),
+        }
+    }
+
     /// Check if the project has a configuration file
     pub fn has_config(&self) -> bool {
         self.config.is_some()

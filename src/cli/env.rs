@@ -26,6 +26,13 @@ pub struct EnvArgs {
     pub format: OutputFormat,
 }
 
+/// A single entry in the adopath search order.
+struct AdopathEntry {
+    path: String,
+    source: &'static str,  // "local", "package", or "builtin"
+    label: Option<String>, // package name for package entries
+}
+
 /// Gathered environment information
 struct EnvironmentInfo {
     stata_binary: Option<String>,
@@ -36,7 +43,7 @@ struct EnvironmentInfo {
     cache_dir: PathBuf,
     log_dir: PathBuf,
     show_progress: bool,
-    adopath: Vec<String>,
+    adopath: Vec<AdopathEntry>,
     package_count: usize,
 }
 
@@ -83,9 +90,10 @@ fn gather_environment_info() -> Result<EnvironmentInfo> {
 
     let show_progress = config.map(|c| c.run.show_progress).unwrap_or(true);
 
-    // Build adopath list from lockfile
+    // Build adopath list from lockfile + local ado paths
+    let local_ado_paths = resolve_local_ado_paths_for_env(&project);
     let (adopath, package_count) =
-        build_adopath_from_lockfile(&project.as_ref().map(|p| p.root.clone()));
+        build_adopath_from_lockfile(&project.as_ref().map(|p| p.root.clone()), &local_ado_paths);
 
     // Check for config file
     let config_file = project.as_ref().map(|p| p.root.join("stacy.toml"));
@@ -129,9 +137,29 @@ fn detect_stata_with_source() -> (Option<String>, String) {
     }
 }
 
-fn build_adopath_from_lockfile(project_root: &Option<PathBuf>) -> (Vec<String>, usize) {
-    let mut paths = Vec::new();
+/// Resolve `config.paths.ado` entries relative to project root into absolute paths.
+fn resolve_local_ado_paths_for_env(project: &Option<Project>) -> Vec<PathBuf> {
+    match project {
+        Some(p) => p.resolve_local_ado_paths(),
+        None => Vec::new(),
+    }
+}
+
+fn build_adopath_from_lockfile(
+    project_root: &Option<PathBuf>,
+    local_ado_paths: &[PathBuf],
+) -> (Vec<AdopathEntry>, usize) {
+    let mut entries = Vec::new();
     let mut package_count = 0;
+
+    // Add local ado paths first (in declared order)
+    for local_path in local_ado_paths {
+        entries.push(AdopathEntry {
+            path: local_path.display().to_string(),
+            source: "local",
+            label: None,
+        });
+    }
 
     // Load lockfile and add package paths from global cache.
     // Errors are shown as warnings since `stacy env` is informational (not executing Stata).
@@ -144,7 +172,11 @@ fn build_adopath_from_lockfile(project_root: &Option<PathBuf>) -> (Vec<String>, 
 
                 for (name, entry) in sorted_packages {
                     if let Ok(pkg_path) = global_cache::package_path(name, &entry.version) {
-                        paths.push(format!("{} ({})", pkg_path.display(), name));
+                        entries.push(AdopathEntry {
+                            path: pkg_path.display().to_string(),
+                            source: "package",
+                            label: Some(name.clone()),
+                        });
                         package_count += 1;
                     }
                 }
@@ -157,9 +189,13 @@ fn build_adopath_from_lockfile(project_root: &Option<PathBuf>) -> (Vec<String>, 
     }
 
     // Reflects strict mode (the default for `stacy run`) — only BASE, no SITE/PERSONAL/PLUS/OLDPLACE.
-    paths.push("BASE".to_string());
+    entries.push(AdopathEntry {
+        path: "BASE".to_string(),
+        source: "builtin",
+        label: None,
+    });
 
-    (paths, package_count)
+    (entries, package_count)
 }
 
 fn print_human_output(info: &EnvironmentInfo) {
@@ -202,8 +238,13 @@ fn print_human_output(info: &EnvironmentInfo) {
 
     // Adopath section
     println!("S_ADO (package search path):");
-    for (i, path) in info.adopath.iter().enumerate() {
-        println!("  {}. {}", i + 1, path);
+    for (i, entry) in info.adopath.iter().enumerate() {
+        let label = match (entry.source, &entry.label) {
+            ("local", _) => format!("{} (local)", entry.path),
+            ("package", Some(name)) => format!("{} ({})", entry.path, name),
+            _ => entry.path.clone(),
+        };
+        println!("  {}. {}", i + 1, label);
     }
     println!();
 
@@ -236,7 +277,15 @@ fn print_json_output(info: &EnvironmentInfo) {
         "settings": {
             "show_progress": info.show_progress,
         },
-        "s_ado": info.adopath,
+        "s_ado": info.adopath.iter().map(|e| {
+            let mut obj = serde_json::Map::new();
+            obj.insert("path".to_string(), json!(e.path));
+            obj.insert("source".to_string(), json!(e.source));
+            if let Some(ref label) = e.label {
+                obj.insert("label".to_string(), json!(label));
+            }
+            serde_json::Value::Object(obj)
+        }).collect::<Vec<_>>(),
         "adopath_count": info.adopath.len(),
     });
 

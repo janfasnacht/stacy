@@ -26,6 +26,9 @@ show_progress = true
 progress_interval_seconds = 10
 max_log_size_mb = 50
 
+[paths]
+ado = ["ado", "lib/custom"]
+
 [packages.dependencies]
 estout = "ssc"
 reghdfe = "github:sergiocorreia/reghdfe"
@@ -61,6 +64,21 @@ Settings for [`stacy run`](../commands/run.md) command.
 | `show_progress` | bool | `true` | Show progress during execution |
 | `progress_interval_seconds` | int | `10` | Progress update interval |
 | `max_log_size_mb` | int | `50` | Log size warning threshold |
+
+### [paths]
+
+Local ado directories to prepend to S_ADO. Paths are relative to the project root and resolved to absolute paths at runtime. This lets strict mode work with project-local `.ado` programs without needing `adopath ++` boilerplate.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `ado` | array | `[]` | Local ado directories |
+
+```toml
+[paths]
+ado = ["ado", "lib/custom"]
+```
+
+Directories are prepended to S_ADO in declared order, before package cache paths. Non-existent paths produce a warning in `stacy doctor` but are not a hard error.
 
 ### [packages.dependencies], [packages.dev], [packages.test]
 
@@ -152,6 +170,19 @@ name = "analysis"
 [packages.dependencies]
 estout = "ssc"
 reghdfe = "github:sergiocorreia/reghdfe"
+```
+
+### With Local Ado Paths
+
+```toml
+[project]
+name = "analysis"
+
+[paths]
+ado = ["ado"]
+
+[packages.dependencies]
+estout = "ssc"
 ```
 
 ### With Tasks

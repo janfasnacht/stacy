@@ -16,10 +16,21 @@ pub struct Config {
     pub project: ProjectSection,
     /// Execution settings (for `stacy run`)
     pub run: RunSection,
+    /// Path settings (local ado directories, etc.)
+    pub paths: PathsSection,
     /// Package management settings
     pub packages: PackagesSection,
     /// Task definitions (for `stacy task`)
     pub scripts: ScriptsSection,
+}
+
+/// Path settings for local ado directories
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(default)]
+pub struct PathsSection {
+    /// Local ado directories to prepend to S_ADO (relative to project root)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ado: Vec<PathBuf>,
 }
 
 /// Project-level settings (committed to version control)
@@ -383,6 +394,10 @@ log_dir = "logs"
 show_progress = true
 # progress_interval_seconds = 10
 # max_log_size_mb = 50
+
+# Local ado directories (prepended to S_ADO, relative to project root)
+# [paths]
+# ado = ["ado", "lib/custom"]
 
 # Package dependencies (installed to global cache at ~/.cache/stacy/packages/)
 # [packages.dependencies]
@@ -1037,5 +1052,55 @@ assert = "ssc"
         assert!(result.packages.is_test_package("assert"));
         assert!(!result.packages.is_test_package("estout"));
         assert!(!result.packages.is_test_package("mdesc"));
+    }
+
+    #[test]
+    fn test_load_config_with_paths_section() {
+        let temp = TempDir::new().unwrap();
+        let config_content = r#"
+[paths]
+ado = ["ado", "lib/custom"]
+"#;
+        fs::write(temp.path().join("stacy.toml"), config_content).unwrap();
+
+        let result = load_config(temp.path()).unwrap().unwrap();
+        assert_eq!(result.paths.ado.len(), 2);
+        assert_eq!(result.paths.ado[0], PathBuf::from("ado"));
+        assert_eq!(result.paths.ado[1], PathBuf::from("lib/custom"));
+    }
+
+    #[test]
+    fn test_load_config_with_empty_paths() {
+        let temp = TempDir::new().unwrap();
+        // No [paths] section at all
+        let config_content = r#"
+[project]
+name = "test"
+"#;
+        fs::write(temp.path().join("stacy.toml"), config_content).unwrap();
+
+        let result = load_config(temp.path()).unwrap().unwrap();
+        assert!(result.paths.ado.is_empty());
+    }
+
+    #[test]
+    fn test_write_and_read_config_with_paths() {
+        let temp = TempDir::new().unwrap();
+
+        let mut config = Config::default();
+        config.paths.ado = vec![PathBuf::from("ado"), PathBuf::from("lib/custom")];
+
+        write_config(&config, temp.path()).unwrap();
+
+        let loaded = load_config(temp.path()).unwrap().unwrap();
+        assert_eq!(loaded.paths.ado.len(), 2);
+        assert_eq!(loaded.paths.ado[0], PathBuf::from("ado"));
+        assert_eq!(loaded.paths.ado[1], PathBuf::from("lib/custom"));
+    }
+
+    #[test]
+    fn test_default_config_has_empty_paths() {
+        let config = Config::default();
+        assert!(config.paths.ado.is_empty());
     }
 }
