@@ -1,0 +1,5 @@
+# Files to copy from main worktree into new worktrees (wt step copy-ignored).
+# Must also be gitignored to be copied.
+CLAUDE.md
+.claude/settings.json
+.claude/settings.local.json
