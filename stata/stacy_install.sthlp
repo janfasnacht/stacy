@@ -22,6 +22,9 @@
 {synoptline}
 {syntab:Main}
 {synopt:{opt:from(string)}}Source: ssc or github:user/repo{p_end}
+{synopt:{opt:frozen}}Fail if lockfile doesn't match stacy.toml{p_end}
+{synopt:{opt:noverify}}Skip checksum verification{p_end}
+{synopt:{opt:with(string)}}Include dependency groups (dev, test){p_end}
 {synoptline}
 
 
@@ -37,6 +40,15 @@
 
 {phang}
 {opt from} source: ssc or github:user/repo.
+
+{phang}
+{opt frozen} fail if lockfile doesn't match stacy.toml.
+
+{phang}
+{opt no_verify} skip checksum verification.
+
+{phang}
+{opt with} include dependency groups (dev, test).
 
 
 {marker returns}{...}

@@ -25,6 +25,9 @@ lockfile. Can also install individual packages directly from SSC or GitHub.
 | Option | Description |
 |--------|-------------|
 | `--from` | Source: ssc or github:user/repo |
+| `--frozen` | Fail if lockfile doesn't match stacy.toml |
+| `--no_verify` | Skip checksum verification |
+| `--with` | Include dependency groups (dev, test) |
 
 ## Examples
 

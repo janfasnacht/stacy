@@ -77,7 +77,8 @@ quiet = { type = "bool", short = "q", description = "Suppress output", stata_opt
 verbose = { type = "bool", description = "Extra output", stata_option = "Verbose" }
 json = { type = "bool", description = "JSON output (internal)" }
 profile = { type = "bool", description = "Include execution metrics", stata_option = "Profile" }
-trace = { type = "int", long = "trace", description = "Enable execution tracing at given depth" }
+allow_global = { type = "bool", long = "allow-global", description = "Allow globally installed packages", stata_option = "AllowGlobal" }
+trace = { type = "int", long = "trace", description = "Enable execution tracing at given depth", stata_option = "Trace(integer)" }
 
 [commands.run.returns]
 # Scalars (numeric values)
@@ -270,6 +271,9 @@ see_also = ["add", "lock", "list"]
 [commands.install.args]
 package = { type = "string", positional = true, description = "Package name (optional)" }
 from = { type = "string", description = "Source: ssc or github:user/repo", stata_option = "From(string)" }
+with = { type = "string", long = "with", description = "Include dependency groups (dev, test)", stata_option = "With(string)" }
+frozen = { type = "bool", long = "frozen", description = "Fail if lockfile doesn't match stacy.toml", stata_option = "FROZEN" }
+no_verify = { type = "bool", long = "no-verify", description = "Skip checksum verification", stata_option = "NOVerify" }
 json = { type = "bool", description = "JSON output (internal)" }
 
 [commands.install.returns]
