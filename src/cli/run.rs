@@ -263,7 +263,7 @@ pub struct RunArgs {
     pub trace: Option<u32>,
 
     /// Kill script if it exceeds this many seconds (SIGTERM, then SIGKILL after 5s grace)
-    #[arg(long, value_name = "SECONDS")]
+    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
     pub timeout: Option<u64>,
 }
 

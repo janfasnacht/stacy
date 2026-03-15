@@ -218,6 +218,9 @@ impl StataExecutor {
                     Err(e) => eprintln!("  S_ADO: error loading lockfile: {}", e),
                 }
             }
+            if let Some(timeout) = self.timeout {
+                eprintln!("  Timeout: {}s", timeout.as_secs());
+            }
             eprintln!("  Command: stata-mp -b -q do {}", script.display());
             eprintln!();
         }
