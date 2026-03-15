@@ -211,6 +211,16 @@ impl PackagesSection {
             .or_else(|| self.test.remove(name))
     }
 
+    /// Get all package names across all groups
+    pub fn all_package_names(&self) -> Vec<String> {
+        self.dependencies
+            .keys()
+            .chain(self.dev.keys())
+            .chain(self.test.keys())
+            .cloned()
+            .collect()
+    }
+
     /// Get all packages with their group
     pub fn all_packages(&self) -> impl Iterator<Item = (&String, &PackageSpec, DependencyGroup)> {
         self.dependencies

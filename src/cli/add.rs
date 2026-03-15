@@ -5,6 +5,8 @@
 use crate::cli::output_format::OutputFormat;
 use crate::cli::output_types::{AddOutput, CommandOutput};
 use crate::error::{Error, Result};
+use crate::packages::dep_scan;
+use crate::packages::global_cache;
 use crate::packages::hints;
 use crate::packages::installer::{
     install_from_local, install_from_net, install_from_ssc, install_package_github,
@@ -12,6 +14,7 @@ use crate::packages::installer::{
 use crate::project::config::{load_config, write_config, DependencyGroup, PackageSpec};
 use crate::project::Project;
 use clap::Args;
+use std::collections::HashSet;
 
 #[derive(Args)]
 #[command(after_help = "\
@@ -162,7 +165,26 @@ pub fn execute(args: &AddArgs) -> Result<()> {
 
                 if format == OutputFormat::Human {
                     println!("  + {} ({})", package_lower, result.version);
-                    if let Some(hint) = hints::get_hint(&package_lower) {
+
+                    // Scan installed files for implicit dependencies
+                    let installed: HashSet<String> =
+                        config.packages.all_package_names().into_iter().collect();
+                    if let Ok(cache_dir) =
+                        global_cache::package_path(&package_lower, &result.version)
+                    {
+                        let missing =
+                            dep_scan::find_missing_deps(&package_lower, &cache_dir, &installed);
+                        if !missing.is_empty() {
+                            let names = missing.join(" ");
+                            println!(
+                                "    hint: {} appears to need {}. Run: stacy add {}",
+                                package_lower, names, names
+                            );
+                        } else if let Some(hint) = hints::get_hint(&package_lower) {
+                            // Fallback to hardcoded hints for edge cases
+                            println!("    hint: {}", hint);
+                        }
+                    } else if let Some(hint) = hints::get_hint(&package_lower) {
                         println!("    hint: {}", hint);
                     }
                 }

@@ -12,10 +12,14 @@ use crate::cli::output_types::{CommandOutput, DoctorOutput};
 use crate::error::error_db::ErrorCodeCache;
 use crate::error::Result;
 use crate::executor::binary::detect_stata_binary;
+use crate::packages::dep_scan;
 use crate::packages::global_cache;
+use crate::packages::lockfile;
+use crate::project::config::load_config;
 use crate::project::Project;
 use crate::update_check;
 use clap::Args;
+use std::collections::HashSet;
 
 #[derive(Args)]
 #[command(after_help = "\
@@ -143,6 +147,7 @@ fn run_all_checks() -> Result<Vec<DiagnosticResult>> {
         check_project(),
         check_config(),
         check_local_ado_paths(),
+        check_package_dependencies(),
         check_cache_dir(),
         check_error_codes(),
         check_write_permissions(),
@@ -303,6 +308,84 @@ fn check_local_ado_paths() -> DiagnosticResult {
             message: "Could not check (config error)".to_string(),
             suggestion: None,
         },
+    }
+}
+
+fn check_package_dependencies() -> DiagnosticResult {
+    let project = match Project::find() {
+        Ok(Some(p)) => p,
+        _ => {
+            return DiagnosticResult {
+                name: "Package Dependencies".to_string(),
+                status: CheckStatus::Pass,
+                message: "No project found".to_string(),
+                suggestion: None,
+            }
+        }
+    };
+
+    let config = match load_config(&project.root) {
+        Ok(Some(c)) => c,
+        _ => {
+            return DiagnosticResult {
+                name: "Package Dependencies".to_string(),
+                status: CheckStatus::Pass,
+                message: "No configuration found".to_string(),
+                suggestion: None,
+            }
+        }
+    };
+
+    let lock = match lockfile::load_lockfile(&project.root) {
+        Ok(Some(l)) => l,
+        _ => {
+            return DiagnosticResult {
+                name: "Package Dependencies".to_string(),
+                status: CheckStatus::Pass,
+                message: "No lockfile found".to_string(),
+                suggestion: None,
+            }
+        }
+    };
+
+    let installed: HashSet<String> = config.packages.all_package_names().into_iter().collect();
+    let mut all_missing: Vec<(String, Vec<String>)> = Vec::new();
+
+    for (pkg_name, entry) in &lock.packages {
+        if let Ok(cache_dir) = global_cache::package_path(pkg_name, &entry.version) {
+            let missing = dep_scan::find_missing_deps(pkg_name, &cache_dir, &installed);
+            if !missing.is_empty() {
+                all_missing.push((pkg_name.clone(), missing));
+            }
+        }
+    }
+
+    if all_missing.is_empty() {
+        DiagnosticResult {
+            name: "Package Dependencies".to_string(),
+            status: CheckStatus::Pass,
+            message: "No missing dependencies detected".to_string(),
+            suggestion: None,
+        }
+    } else {
+        let details: Vec<String> = all_missing
+            .iter()
+            .map(|(pkg, deps)| format!("{} needs {}", pkg, deps.join(", ")))
+            .collect();
+        let all_deps: Vec<&str> = all_missing
+            .iter()
+            .flat_map(|(_, deps)| deps.iter().map(|s| s.as_str()))
+            .collect::<HashSet<&str>>()
+            .into_iter()
+            .collect();
+        let mut sorted_deps: Vec<&str> = all_deps;
+        sorted_deps.sort();
+        DiagnosticResult {
+            name: "Package Dependencies".to_string(),
+            status: CheckStatus::Warn,
+            message: format!("Missing dependencies: {}", details.join("; ")),
+            suggestion: Some(format!("Run: stacy add {}", sorted_deps.join(" "))),
+        }
     }
 }
 

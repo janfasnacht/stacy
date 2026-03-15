@@ -1,4 +1,5 @@
 pub mod cache;
+pub mod dep_scan;
 pub mod github;
 pub mod global_cache;
 pub mod hints;
