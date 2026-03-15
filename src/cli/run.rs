@@ -11,7 +11,7 @@ use clap::Args;
 use std::io::{IsTerminal, Read};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 // =============================================================================
 // Semaphore for job limiting
@@ -261,6 +261,10 @@ pub struct RunArgs {
     /// Enable Stata execution tracing at given depth (set trace on, set tracedepth N)
     #[arg(long, value_name = "DEPTH", conflicts_with_all = ["quiet", "parallel"])]
     pub trace: Option<u32>,
+
+    /// Kill script if it exceeds this many seconds (SIGTERM, then SIGKILL after 5s grace)
+    #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
+    pub timeout: Option<u64>,
 }
 
 /// Check if a path is the stdin marker "-"
@@ -441,7 +445,8 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
     let engine_ref = args.engine.as_deref();
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
-        .with_local_ado_paths(local_ado_paths);
+        .with_local_ado_paths(local_ado_paths)
+        .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     if let Some(ref mut m) = metrics {
@@ -687,7 +692,8 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
     let engine_ref = args.engine.as_deref();
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
-        .with_local_ado_paths(local_ado_paths);
+        .with_local_ado_paths(local_ado_paths)
+        .with_timeout(args.timeout.map(Duration::from_secs));
 
     if let Some(ref mut m) = metrics {
         m.end_phase("setup");
@@ -924,7 +930,8 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
     let engine_ref = args.engine.as_deref();
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
-        .with_local_ado_paths(local_ado_paths);
+        .with_local_ado_paths(local_ado_paths)
+        .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     let start = Instant::now();
@@ -1080,7 +1087,8 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
     let engine_ref = args.engine.as_deref();
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
-        .with_local_ado_paths(local_ado_paths);
+        .with_local_ado_paths(local_ado_paths)
+        .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     if !args.quiet && format == OutputFormat::Human {

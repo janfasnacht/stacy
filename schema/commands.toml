@@ -79,6 +79,7 @@ json = { type = "bool", description = "JSON output (internal)" }
 profile = { type = "bool", description = "Include execution metrics", stata_option = "Profile" }
 allow_global = { type = "bool", long = "allow-global", description = "Allow globally installed packages", stata_option = "AllowGlobal" }
 trace = { type = "int", long = "trace", description = "Enable execution tracing at given depth", stata_option = "Trace(integer)" }
+timeout = { type = "int", long = "timeout", description = "Kill script if it exceeds this many seconds", stata_option = "Timeout(integer)" }
 
 [commands.run.returns]
 # Scalars (numeric values)
@@ -139,6 +140,11 @@ commands = ["stacy run --format json analysis.do"]
 title = "Execution tracing"
 description = "Enable Stata's set trace on for debugging"
 commands = ["stt run --trace 2 analysis.do", "stt run --trace 2 -v analysis.do"]
+
+[[commands.run.examples]]
+title = "Timeout"
+description = "Kill script if it takes longer than 60 seconds"
+commands = ["stacy run --timeout 60 long_analysis.do"]
 
 
 # =============================================================================

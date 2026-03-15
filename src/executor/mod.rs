@@ -29,6 +29,8 @@ pub struct StataExecutor {
     allow_global: bool,
     /// Local ado directories to prepend to S_ADO (resolved to absolute paths).
     local_ado_paths: Vec<PathBuf>,
+    /// Kill the Stata process if it exceeds this duration.
+    timeout: Option<Duration>,
 }
 
 impl Default for StataExecutor {
@@ -72,6 +74,7 @@ impl StataExecutor {
             progress_interval: Duration::from_millis(100),
             allow_global: false,
             local_ado_paths: Vec::new(),
+            timeout: None,
         })
     }
 
@@ -83,6 +86,7 @@ impl StataExecutor {
             progress_interval: Duration::from_millis(100),
             allow_global: false,
             local_ado_paths: Vec::new(),
+            timeout: None,
         }
     }
 
@@ -101,6 +105,12 @@ impl StataExecutor {
     /// Set local ado directories to prepend to S_ADO
     pub fn with_local_ado_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.local_ado_paths = paths;
+        self
+    }
+
+    /// Set execution timeout (SIGTERM → 5s grace → SIGKILL)
+    pub fn with_timeout(mut self, timeout: Option<Duration>) -> Self {
+        self.timeout = timeout;
         self
     }
 
@@ -159,6 +169,9 @@ impl StataExecutor {
         if let Some(dir) = working_dir {
             options = options.with_working_dir(dir);
         }
+        if let Some(timeout) = self.timeout {
+            options = options.with_timeout(timeout);
+        }
 
         // Show execution details if VeryVerbose
         if self.verbosity.should_show_execution_details() {
@@ -204,6 +217,9 @@ impl StataExecutor {
                     }
                     Err(e) => eprintln!("  S_ADO: error loading lockfile: {}", e),
                 }
+            }
+            if let Some(timeout) = self.timeout {
+                eprintln!("  Timeout: {}s", timeout.as_secs());
             }
             eprintln!("  Command: stata-mp -b -q do {}", script.display());
             eprintln!();

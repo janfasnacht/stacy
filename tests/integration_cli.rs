@@ -3341,3 +3341,86 @@ fn test_add_invalid_source_shows_all_options() {
         .failure()
         .stderr(predicate::str::contains("net:").or(predicate::str::contains("local:")));
 }
+
+// =============================================================================
+// timeout flag
+// =============================================================================
+
+#[test]
+fn test_run_timeout_flag_exists() {
+    stacy()
+        .arg("run")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("--timeout"))
+        .stdout(predicate::str::contains("SECONDS"));
+}
+
+#[test]
+fn test_run_timeout_rejects_non_numeric() {
+    stacy()
+        .arg("run")
+        .arg("--timeout")
+        .arg("abc")
+        .arg("-c")
+        .arg("display 1")
+        .assert()
+        .failure();
+}
+
+#[test]
+fn test_run_timeout_rejects_zero() {
+    stacy()
+        .arg("run")
+        .arg("--timeout")
+        .arg("0")
+        .arg("-c")
+        .arg("display 1")
+        .assert()
+        .failure();
+}
+
+#[test]
+#[ignore] // Requires Stata
+fn test_run_timeout_kills_infinite_loop() {
+    // End-to-end: CLI flag → executor → runner → SIGTERM
+    let temp = TempDir::new().unwrap();
+    let script = temp.path().join("loop.do");
+    fs::write(
+        &script,
+        "local i = 1\nwhile 1 {\n    local i = `i' + 1\n}\n",
+    )
+    .unwrap();
+
+    let start = std::time::Instant::now();
+    stacy()
+        .arg("run")
+        .arg("--timeout")
+        .arg("2")
+        .arg(script.as_os_str())
+        .assert()
+        .failure();
+    let elapsed = start.elapsed();
+
+    // Should have been killed around 2s, not run forever
+    assert!(
+        elapsed.as_secs() < 10,
+        "Timeout should have killed the script, took {}s",
+        elapsed.as_secs()
+    );
+}
+
+#[test]
+#[ignore] // Requires Stata
+fn test_run_timeout_does_not_interfere_with_fast_script() {
+    // A generous timeout should not affect a fast script
+    stacy()
+        .arg("run")
+        .arg("--timeout")
+        .arg("60")
+        .arg("-c")
+        .arg("display 42")
+        .assert()
+        .success();
+}

@@ -43,6 +43,7 @@ For interactive use where you want to quickly check a result, see `stacy eval`.
 | `-C, --directory` | Run Stata in this directory |
 | `--profile` | Include execution metrics |
 | `-q, --quiet` | Suppress output |
+| `--timeout` | Kill script if it exceeds this many seconds |
 | `--trace` | Enable execution tracing at given depth |
 | `--verbose` | Extra output |
 
@@ -113,6 +114,14 @@ Enable Stata's set trace on for debugging
 ```bash
 stt run --trace 2 analysis.do
 stt run --trace 2 -v analysis.do
+```
+
+### Timeout
+
+Kill script if it takes longer than 60 seconds
+
+```bash
+stacy run --timeout 60 long_analysis.do
 ```
 
 ## Exit Codes
