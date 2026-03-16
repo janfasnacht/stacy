@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://stacy.janfasnacht.com"><strong>Documentation →</strong></a>
+  <a href="https://janfasnacht.com/assets/pdfs/stacy-paper.pdf"><strong>Paper (preprint) →</strong></a> · <a href="https://stacy.janfasnacht.com"><strong>Documentation →</strong></a>
 </p>
 
 ---
