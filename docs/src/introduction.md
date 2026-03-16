@@ -1,10 +1,10 @@
 # Introduction
 
-[![Version](https://img.shields.io/badge/version-1.0.1-blue)](https://github.com/janfasnacht/stacy/releases)
+[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/janfasnacht/stacy/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/janfasnacht/stacy/blob/main/LICENSE)
 [![GitHub](https://img.shields.io/badge/github-janfasnacht/stacy-black)](https://github.com/janfasnacht/stacy)
 
-Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit: the environment — what packages the project needs — and the outcome — whether execution succeeded.
+Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit: the outcome — whether execution succeeded — and the environment — what packages the project needs.
 
 **stacy** makes both explicit. Dependencies get a manifest and lockfile; execution gets proper exit codes. With these primitives, Stata projects can be versioned, automated, and reproduced.
 
@@ -18,9 +18,9 @@ Stata projects need to compose: with build systems that expect exit codes, with 
 
 ## The Problem
 
-**The environment is implicit.** User-written packages install to a global path — no manifest, no lockfile, no isolation between projects. There is no way to declare dependencies and install from that declaration. Each `ssc install` retrieves whatever version exists at that moment; a collaborator installing later gets a different version entirely.
+**The outcome is implicit.** Stata's batch mode (`stata-mp -b do script.do`) exits with code 0 even when scripts fail. Errors are buried in logs. Build systems, CI pipelines, and downstream scripts cannot detect failure — they proceed as if nothing went wrong.
 
-**The outcome is implicit.** Stata's batch mode (`stata-mp -b do script.do`) exits with code 0 even when scripts fail. Errors are buried in logs. Build systems, CI pipelines, and orchestration tools cannot detect failure — they proceed as if nothing went wrong.
+**The environment is implicit.** User-written packages install to a global path — no manifest, no lockfile, no isolation between projects. There is no way to declare dependencies and install from that declaration. Each `ssc install` retrieves whatever version exists at that moment; a collaborator installing later gets a different version entirely.
 
 ## The Solution
 
@@ -40,7 +40,6 @@ A project that declares its dependencies can be installed identically elsewhere.
 
 - Journals can verify that replication packages run
 - Cluster jobs fail fast instead of silently producing garbage
-- Coding agents detect when their changes cause errors
 - Collaborators work from the same locked environment rather than debugging "it worked on my machine"
 
 ```makefile

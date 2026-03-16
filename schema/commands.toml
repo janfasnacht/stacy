@@ -7,11 +7,11 @@
 #   3. Help files (stata/*.sthlp) - generated from this schema
 #   4. Documentation (docs/src/commands/*.md) - generated from this schema
 #
-# Version: 1.1.0
+# Version: 1.2.0
 # Last Updated: 2026-03-15
 
 [meta]
-version = "1.1.0"
+version = "1.2.0"
 stata_minimum = "14.0"
 description = "Reproducible Stata Workflow Tool"
 

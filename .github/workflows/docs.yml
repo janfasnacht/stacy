@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'stata/**'
+      - 'install.sh'
       - '.github/workflows/docs.yml'
   workflow_dispatch:  # Allow manual trigger
 
@@ -33,6 +35,11 @@ jobs:
 
       - name: Build documentation
         run: mdbook build docs
+
+      - name: Copy install script and Stata wrappers to site root
+        run: |
+          cp install.sh docs/book/install.sh
+          cp -r stata docs/book/stata
 
       - name: Setup Pages
         uses: actions/configure-pages@v4

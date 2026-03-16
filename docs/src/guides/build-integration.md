@@ -116,7 +116,7 @@ jobs:
 
       - name: Install stacy
         run: |
-          curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh | bash
+          curl -fsSL https://stacy.janfasnacht.com/install.sh | bash
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install packages
@@ -141,7 +141,7 @@ jobs:
 analysis:
   stage: build
   before_script:
-    - curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh | bash
+    - curl -fsSL https://stacy.janfasnacht.com/install.sh | bash
     - export PATH="$HOME/.local/bin:$PATH"
     - stacy install
   script:

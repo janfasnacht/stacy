@@ -5,33 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Fixed
-
-- Schema/CLI divergence: sync `commands.toml` with actual CLI implementation
-  - Add missing `run` flags: `--parallel`, `-j/--jobs`, `--cache`, `--force`, `--cache-only`, `--engine`
-  - Add missing exit code 6 (statistical error, r(400)-r(499)) to schema and generated docs
-  - Remove stale `install` args (`package`, `from`) that no longer exist in CLI
-  - Replace removed `init --yes` with `--interactive` in schema
-  - Add missing `doctor --refresh` to schema
+## [1.2.0] - 2026-03-15
 
 ### Added
 
-- `stacy run --timeout <seconds>` flag to kill long-running scripts (SIGTERM → SIGKILL escalation)
-- Stata wrappers: `Timeout(integer)` option for `stacy_run`
-- Stata wrappers: `AllowGlobal` and `Trace(integer)` options for `stacy_run`
-- Stata wrappers: `With(string)`, `FROZEN`, and `NOVerify` options for `stacy_install`
-- Stata wrappers: `PARALLEL`, `Jobs(integer)`, `Cache`, `Force`, `CacheOnly`, `Engine(string)` options for `stacy_run`
-- `[paths]` config section for project-local ado directories prepended to `S_ADO`
-- Post-install dependency scanning: after `stacy add`, scans `.ado` files for `require`/`which`/`findfile` patterns and warns about missing dependencies
-- `stacy doctor` now checks all installed packages for missing implicit dependencies
-- `stacy init` and `stacy add` now show the package cache location in output
+- `stacy run --timeout <seconds>` to kill long-running scripts
+- `[paths]` config section for project-local ado directories in `S_ADO`
+- Post-install dependency scanning: warn about missing implicit dependencies after `stacy add` and in `stacy doctor`
+- Package naming hints: suggest correct SSC package on 404 (e.g. `labmask` → `labutil`)
+- Stata wrappers now expose all CLI flags (`AllowGlobal`, `Trace`, `Timeout`, `Parallel`, `Cache`, etc.)
 
 ### Changed
 
-- `stacy init` template trimmed to essentials (`[project]` and `[packages.dependencies]` examples only)
-- Package dependencies in `stacy.toml` are now written in alphabetical order
+- `stacy init` generates minimal config (no default values the user will delete)
+- Dependencies in `stacy.toml` sorted alphabetically
+- `stacy init` and `stacy add` show package cache location
+
+### Fixed
+
+- Sync `commands.toml` schema with CLI (missing flags, stale args, missing exit code 6)
 
 ## [1.1.0] - 2026-02-22
 
@@ -96,7 +88,7 @@ Initial public release.
 - `--format json` and `--format stata` output modes
 - Cross-platform support: macOS, Linux, Windows
 
-[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.1.0...HEAD
+[1.2.0]: https://github.com/janfasnacht/stacy/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/janfasnacht/stacy/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/janfasnacht/stacy/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/janfasnacht/stacy/compare/v1.0.0...v1.0.1

@@ -6,7 +6,7 @@ stacy is a single static binary with no runtime dependencies.
 
 **macOS / Linux:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh | bash
+curl -fsSL https://stacy.janfasnacht.com/install.sh | bash
 ```
 
 **Windows (PowerShell):**
@@ -21,7 +21,7 @@ Both install to `~/.local/bin/` (or equivalent). Ensure this directory is in you
 If you prefer not to leave Stata, you can install stacy directly from the Stata console:
 
 ```stata
-net install stacy, from("https://raw.githubusercontent.com/janfasnacht/stacy/main/stata/")
+net install stacy, from("https://stacy.janfasnacht.com/stata")
 stacy setup
 ```
 
@@ -89,7 +89,7 @@ cargo install ... --force     # Cargo
 stacy checks for new releases on startup and prints a notification to stderr if one is available:
 
 ```
-Update available: v1.0.0 → v1.0.1
+Update available: v1.1.0 → v1.2.0
 Run `brew upgrade stacy` to update
 ```
 

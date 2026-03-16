@@ -1,6 +1,6 @@
 #!/bin/bash
 # stacy installer for macOS and Linux
-# Usage: curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh | bash
+# Usage: curl -fsSL https://stacy.janfasnacht.com/install.sh | bash
 
 set -e
 

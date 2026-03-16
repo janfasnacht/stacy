@@ -18,9 +18,9 @@
 
 Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit.
 
-**The environment is implicit.** Packages install to a global path — no manifest, no lockfile, no isolation between projects. Each `ssc install` retrieves whatever version exists today; a collaborator installing later gets a different version entirely.
+**The outcome is implicit.** Batch mode (`stata-mp -b do script.do`) returns exit code 0 even when scripts fail. Build systems, CI pipelines, and downstream scripts cannot detect failure — they proceed as if nothing went wrong.
 
-**The outcome is implicit.** Batch mode (`stata-mp -b do script.do`) returns exit code 0 even when scripts fail. Build systems, CI pipelines, and coding agents cannot detect failure — they proceed as if nothing went wrong.
+**The environment is implicit.** Packages install to a global path — no manifest, no lockfile, no isolation between projects. Each `ssc install` retrieves whatever version exists today; a collaborator installing later gets a different version entirely.
 
 **stacy** makes both explicit:
 
@@ -45,13 +45,13 @@ stacy install               # Installs exact versions from lockfile
 
 ```bash
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh | bash
+curl -fsSL https://stacy.janfasnacht.com/install.sh | bash
 
 # Homebrew
 brew install janfasnacht/stacy/stacy
 
 # From within Stata
-net install stacy, from("https://raw.githubusercontent.com/janfasnacht/stacy/main/stata/")
+net install stacy, from("https://stacy.janfasnacht.com/stata")
 stacy setup
 
 # From source

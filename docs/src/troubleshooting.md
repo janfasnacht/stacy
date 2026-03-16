@@ -16,7 +16,7 @@ Restart terminal.
 
 ```bash
 mkdir -p ~/.local/bin
-curl -fsSL https://raw.githubusercontent.com/janfasnacht/stacy/main/install.sh | bash
+curl -fsSL https://stacy.janfasnacht.com/install.sh | bash
 ```
 
 ### macOS blocks the binary

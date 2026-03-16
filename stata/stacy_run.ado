@@ -1,6 +1,6 @@
 *! stacy_run.ado - Execute a Stata script with error detection
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.1.0
+*! Version: 1.2.0
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 

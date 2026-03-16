@@ -1,6 +1,6 @@
 *! stacy_add.ado - Add packages to project
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.1.0
+*! Version: 1.2.0
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
