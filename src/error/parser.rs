@@ -96,7 +96,8 @@ pub fn parse_log_for_errors(log_path: &Path) -> Result<Vec<StataError>> {
 
 /// Parse a Stata log file for errors
 pub fn parse_log_file(log_path: &Path) -> Result<Vec<StataError>> {
-    let content = fs::read_to_string(log_path).map_err(Error::Io)?;
+    let bytes = fs::read(log_path).map_err(Error::Io)?;
+    let content = String::from_utf8_lossy(&bytes).into_owned();
 
     parse_log_content(&content)
 }
@@ -513,5 +514,23 @@ r(199);";
         let lines: Vec<&str> = vec!["normal output", "", "end of do-file"];
         let msg = extract_error_message(&lines, 2, 199);
         assert!(msg.is_none());
+    }
+
+    #[test]
+    fn test_parse_log_file_with_non_utf8() {
+        use std::io::Write;
+        let mut temp = tempfile::NamedTempFile::new().unwrap();
+        // Latin-1 encoded "résultat" (é = 0xe9) followed by a Stata error
+        temp.write_all(b"label: r\xe9sultat du mod\xe8le\n")
+            .unwrap();
+        temp.write_all(b"file data.dta not found\n").unwrap();
+        temp.write_all(b"r(601);\n").unwrap();
+        temp.write_all(b"\nend of do-file\n").unwrap();
+        temp.write_all(b"r(601);\n").unwrap();
+        temp.flush().unwrap();
+
+        let errors = parse_log_file(temp.path()).unwrap();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].r_code(), Some(601));
     }
 }

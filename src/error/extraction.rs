@@ -75,7 +75,8 @@ display "STACY_EXTRACTION_END"
         ));
     }
 
-    let log_content = std::fs::read_to_string(&log_path)?;
+    let bytes = std::fs::read(&log_path)?;
+    let log_content = String::from_utf8_lossy(&bytes).into_owned();
     parse_extraction_log(&log_content)
 }
 

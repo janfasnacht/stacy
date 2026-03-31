@@ -7,7 +7,7 @@
 
 use crate::error::Result;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::io::{BufReader, Read as _, Seek, SeekFrom};
 use std::path::Path;
 
 /// Read the last N lines of a log file
@@ -38,7 +38,10 @@ pub fn read_last_lines(log_file: &Path, n: usize) -> Result<Vec<String>> {
     if file_size < 10_000 {
         // File < 10KB, read everything
         reader.seek(SeekFrom::Start(0))?;
-        let lines: Vec<String> = reader.lines().collect::<std::io::Result<_>>()?;
+        let mut buf = Vec::new();
+        reader.read_to_end(&mut buf)?;
+        let text = String::from_utf8_lossy(&buf);
+        let lines: Vec<String> = text.lines().map(String::from).collect();
         return Ok(lines.into_iter().rev().take(n).rev().collect());
     }
 
@@ -47,7 +50,10 @@ pub fn read_last_lines(log_file: &Path, n: usize) -> Result<Vec<String>> {
     let read_size = 5_000.min(file_size);
     reader.seek(SeekFrom::End(-(read_size as i64)))?;
 
-    let lines: Vec<String> = reader.lines().collect::<std::io::Result<_>>()?;
+    let mut buf = Vec::new();
+    reader.read_to_end(&mut buf)?;
+    let text = String::from_utf8_lossy(&buf);
+    let lines: Vec<String> = text.lines().map(String::from).collect();
 
     // Take last n lines
     Ok(lines.into_iter().rev().take(n).rev().collect())
@@ -70,7 +76,8 @@ pub fn read_last_lines(log_file: &Path, n: usize) -> Result<Vec<String>> {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn read_full_log(log_file: &Path) -> Result<String> {
-    Ok(std::fs::read_to_string(log_file)?)
+    let bytes = std::fs::read(log_file)?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 /// Check if log file indicates successful completion
@@ -123,7 +130,8 @@ pub fn is_successful_completion(log_file: &Path) -> Result<bool> {
 /// Returns formatted string with actual line numbers from log file.
 pub fn get_error_context(log_file: &Path) -> Result<String> {
     // Read entire file to get accurate line numbers
-    let content = std::fs::read_to_string(log_file)?;
+    let bytes = std::fs::read(log_file)?;
+    let content = String::from_utf8_lossy(&bytes).into_owned();
     let all_lines: Vec<&str> = content.lines().collect();
     let total_lines = all_lines.len();
 
@@ -617,6 +625,33 @@ end of do-file\n";
 
         assert!(!is_successful_completion(temp_fail.path())?);
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_read_full_log_with_non_utf8() -> Result<()> {
+        let mut temp = NamedTempFile::new()?;
+        // Latin-1 "résultat" (é = 0xe9, è = 0xe8)
+        temp.write_all(b"variable label: r\xe9sultat du mod\xe8le\n")?;
+        temp.write_all(b"end of do-file\n")?;
+        temp.flush()?;
+
+        let content = read_full_log(temp.path())?;
+        assert!(content.contains("end of do-file"));
+        assert!(content.contains("variable label:"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_error_context_with_non_utf8() -> Result<()> {
+        let mut temp = NamedTempFile::new()?;
+        temp.write_all(b"label: r\xe9sultat\n")?;
+        temp.write_all(b"file data.dta not found\n")?;
+        temp.write_all(b"r(601);\n")?;
+        temp.flush()?;
+
+        let context = get_error_context(temp.path())?;
+        assert!(context.contains("r(601)"));
         Ok(())
     }
 }
