@@ -51,9 +51,10 @@ pub fn maybe_notify_and_spawn() {
     }
 
     // Read cache and print notification if update is available
+    let current = env!("CARGO_PKG_VERSION");
     if let Some(cache) = load_cached_update() {
-        if cache.update_available {
-            print_notification(&cache.current_version, &cache.latest_version);
+        if compare_versions(current, &cache.latest_version) {
+            print_notification(current, &cache.latest_version);
         }
 
         // If cache is fresh, no need to refresh
@@ -63,9 +64,9 @@ pub fn maybe_notify_and_spawn() {
     }
 
     // Spawn background thread to refresh cache
-    let current = env!("CARGO_PKG_VERSION").to_string();
+    let current_owned = current.to_string();
     std::thread::spawn(move || {
-        refresh_cache(&current);
+        refresh_cache(&current_owned);
     });
 }
 
@@ -241,7 +242,7 @@ pub fn detect_install_method() -> InstallMethod {
 pub fn upgrade_instruction(method: &InstallMethod) -> &'static str {
     match method {
         InstallMethod::Homebrew => "brew upgrade stacy",
-        InstallMethod::Cargo => "cargo install stata-cli",
+        InstallMethod::Cargo => "cargo install stacy",
         InstallMethod::Manual => "download from https://github.com/janfasnacht/stacy/releases",
     }
 }
@@ -387,7 +388,7 @@ mod tests {
         );
         assert_eq!(
             upgrade_instruction(&InstallMethod::Cargo),
-            "cargo install stata-cli"
+            "cargo install stacy"
         );
         assert_eq!(
             upgrade_instruction(&InstallMethod::Manual),

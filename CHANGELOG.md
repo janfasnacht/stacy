@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Non-UTF-8 characters in Stata log files no longer crash the log parser
+- Update check now compares against the running binary version, not a stale cached value
+- Cargo upgrade instruction now shows correct crate name (`stacy`, not `stata-cli`)
 
 ## [1.2.0] - 2026-03-15
 
