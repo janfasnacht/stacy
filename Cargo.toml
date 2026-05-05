@@ -46,7 +46,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 
 # Regex for error detection
-regex = "1.10"
+regex = "1.12"
 lazy_static = "1.4"
 
 # Terminal output
@@ -67,7 +67,7 @@ dirs = "6.0.0"
 dialoguer = "0.12.0"
 
 # Temporary file management (for inline code execution)
-tempfile = "3.8"
+tempfile = "3.27"
 
 # Unix process management
 [target.'cfg(unix)'.dependencies]
@@ -75,9 +75,9 @@ libc = "0.2"
 
 [dev-dependencies]
 # Testing
-assert_cmd = "2.0"      # CLI testing
-predicates = "3.0"      # Test assertions
-serial_test = "3.0"     # Sequential test execution
+assert_cmd = "2.2"      # CLI testing
+predicates = "3.1"      # Test assertions
+serial_test = "3.4"     # Sequential test execution
 
 # Benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
