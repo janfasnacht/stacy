@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Stata wrappers failed with `command _stacy_check_version is unrecognized` because the generated `_stacy_compat.ado` defined programs that didn't match its filename and wasn't listed in `stacy.pkg` (#37). Split into one file per program.
 - Parallel `stacy run` invocations on scripts that share a basename no longer collide on the log file (#20). Each run writes to a uniquely-named log in the working directory (`<stem>_<pid>_<nanos>_<n>.log`), so build orchestrators like Make `-j` and Snakemake can run same-stemmed scripts from a shared cwd safely. The path is reported in JSON output's `log_file` field.
 - Non-UTF-8 characters in Stata log files no longer crash the log parser
 - Update check now compares against the running binary version, not a stale cached value
