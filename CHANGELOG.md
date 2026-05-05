@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Stata wrappers now verify that the `stacy` binary they invoke is version-compatible (#35). On mismatch, `_stacy_exec` aborts with a clear error and a `stacy_setup, force` hint instead of silently running against a stale binary. The check shells out once per Stata session (cached in `$stacy_version_checked`).
+
 ### Fixed
 
 - Parallel `stacy run` invocations on scripts that share a basename no longer collide on the log file (#20). Each run writes to a uniquely-named log in the working directory (`<stem>_<pid>_<nanos>_<n>.log`), so build orchestrators like Make `-j` and Snakemake can run same-stemmed scripts from a shared cwd safely. The path is reported in JSON output's `log_file` field.

@@ -623,6 +623,108 @@ fn test_init_schema_has_interactive_not_yes() {
     );
 }
 
+// =============================================================================
+// Wrapper/binary version-compat guard (issue #35)
+// =============================================================================
+
+/// `_stacy_compat.ado` is generated from `Cargo.toml`'s `package.version`.
+/// If a release bumps Cargo.toml without re-running `cargo xtask codegen`,
+/// the wrappers and binary disagree at runtime. This test (plus the existing
+/// codegen --check in CI) makes that drift impossible to merge.
+#[test]
+fn test_compat_ado_version_matches_cargo_toml() {
+    let cargo_toml = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+        .expect("Failed to read Cargo.toml");
+    let parsed: toml::Value = toml::from_str(&cargo_toml).expect("Failed to parse Cargo.toml");
+    let pkg_version = parsed["package"]["version"]
+        .as_str()
+        .expect("Cargo.toml missing package.version");
+
+    let compat_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata/_stacy_compat.ado");
+    let compat = fs::read_to_string(&compat_path).expect("Failed to read _stacy_compat.ado");
+
+    // Header line.
+    assert!(
+        compat.contains(&format!("*! Version: {}", pkg_version)),
+        "_stacy_compat.ado header version does not match Cargo.toml ({}). \
+         Run `cargo xtask codegen`.",
+        pkg_version
+    );
+
+    // Constant returned by _stacy_compat_version.
+    assert!(
+        compat.contains(&format!("return local version \"{}\"", pkg_version)),
+        "_stacy_compat.ado _stacy_compat_version constant does not match \
+         Cargo.toml ({}). Run `cargo xtask codegen`.",
+        pkg_version
+    );
+
+    // The min-compat constant inside _stacy_check_version.
+    assert!(
+        compat.contains(&format!("local expected \"{}\"", pkg_version)),
+        "_stacy_compat.ado expected-version constant does not match \
+         Cargo.toml ({}). Run `cargo xtask codegen`.",
+        pkg_version
+    );
+}
+
+/// Hand-maintained wrappers must keep their `*! Version:` header in lockstep
+/// with `Cargo.toml` — `cargo xtask codegen` rewrites the line. If this test
+/// ever fails, run codegen.
+#[test]
+fn test_hand_maintained_ado_headers_match_cargo_toml() {
+    let cargo_toml = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+        .expect("Failed to read Cargo.toml");
+    let parsed: toml::Value = toml::from_str(&cargo_toml).expect("Failed to parse Cargo.toml");
+    let pkg_version = parsed["package"]["version"]
+        .as_str()
+        .expect("Cargo.toml missing package.version");
+
+    let stata_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    for file in [
+        "_stacy_exec.ado",
+        "_stacy_find_binary.ado",
+        "stacy_setup.ado",
+    ] {
+        let content = fs::read_to_string(stata_dir.join(file))
+            .unwrap_or_else(|_| panic!("Failed to read {}", file));
+        assert!(
+            content.contains(&format!("*! Version: {}", pkg_version)),
+            "{} *! Version: header does not match Cargo.toml ({}). \
+             Run `cargo xtask codegen`.",
+            file,
+            pkg_version
+        );
+    }
+}
+
+/// `_stacy_exec` must call `_stacy_check_version` so a stale binary against
+/// newer wrappers (or vice versa) fails fast instead of silently mismatching.
+#[test]
+fn test_stacy_exec_calls_version_check() {
+    let exec =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("stata/_stacy_exec.ado"))
+            .expect("Failed to read _stacy_exec.ado");
+    assert!(
+        exec.contains("_stacy_check_version"),
+        "_stacy_exec.ado must call _stacy_check_version after _stacy_find_binary"
+    );
+}
+
+/// `stacy_setup` must default to the wrapper version (not a hard-coded
+/// literal), so `stacy_setup, force` actually fixes the mismatch hinted at
+/// in the version-check error.
+#[test]
+fn test_stacy_setup_uses_compat_version_default() {
+    let setup =
+        fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("stata/stacy_setup.ado"))
+            .expect("Failed to read stacy_setup.ado");
+    assert!(
+        setup.contains("_stacy_compat_version"),
+        "stacy_setup.ado must call _stacy_compat_version for its default install version"
+    );
+}
+
 #[test]
 fn test_doctor_schema_has_refresh() {
     let schema = load_schema();

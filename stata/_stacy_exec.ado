@@ -1,6 +1,6 @@
 *! _stacy_exec.ado - Execute stacy command and capture Stata-native output
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.0.1
+*! Version: 1.2.0
 
 /*
     Execute a stacy CLI command and capture Stata-native output.
@@ -35,6 +35,11 @@ program define _stacy_exec, rclass
         exit 601
     }
     local binary `"`r(binary)'"'
+
+    * Verify the binary's version is compatible with these wrappers.
+    * Cached in $stacy_version_checked, so the shell-out only happens once
+    * per Stata session even when many _stacy_exec calls follow.
+    _stacy_check_version `"`binary'"'
 
     * Create temp file for Stata output
     tempfile stata_out
