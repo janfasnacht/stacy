@@ -2383,6 +2383,99 @@ fn test_run_parallel_verbose_warning() {
         .stderr(predicate::str::contains("verbose").or(predicate::str::contains("ignored")));
 }
 
+// Issue #20 regression: parallel runs of scripts that share a basename
+// must not collide on the log file. Pre-fix, both Stata processes wrote
+// to ./build.log from the shared cwd and the trailer got truncated.
+#[test]
+#[ignore]
+fn test_run_parallel_same_stem_no_log_collision() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir(temp.path().join("module_a")).unwrap();
+    fs::create_dir(temp.path().join("module_b")).unwrap();
+    // `sleep 2000` (ms) keeps both processes alive concurrently so writes
+    // would interleave on a buggy implementation.
+    fs::write(
+        temp.path().join("module_a/build.do"),
+        "sleep 2000\ndisplay \"a\"\n",
+    )
+    .unwrap();
+    fs::write(
+        temp.path().join("module_b/build.do"),
+        "sleep 2000\ndisplay \"b\"\n",
+    )
+    .unwrap();
+
+    stacy()
+        .arg("run")
+        .arg("--parallel")
+        .arg("-j2")
+        .arg("-C")
+        .arg(temp.path())
+        .arg(temp.path().join("module_a/build.do"))
+        .arg(temp.path().join("module_b/build.do"))
+        .assert()
+        .success()
+        .stderr(predicate::str::contains("2 passed"))
+        .stderr(predicate::str::contains("incomplete").not());
+}
+
+// Issue #20: each invocation must produce a distinct log file path so
+// concurrent stacy processes from a shared cwd never write to the same file.
+#[test]
+#[ignore]
+fn test_run_log_path_unique_per_invocation() {
+    let temp = TempDir::new().unwrap();
+    fs::write(temp.path().join("test.do"), "display 42\n").unwrap();
+    let script = temp.path().join("test.do");
+
+    let log1 = run_and_extract_log(&script);
+    let log2 = run_and_extract_log(&script);
+
+    assert_ne!(
+        log1, log2,
+        "two runs of the same script must yield distinct log paths"
+    );
+    assert!(
+        std::path::Path::new(&log1).exists(),
+        "log1 should persist: {}",
+        log1
+    );
+    assert!(
+        std::path::Path::new(&log2).exists(),
+        "log2 should persist: {}",
+        log2
+    );
+    // The unique stem embeds the original script's name so logs are recognizable.
+    assert!(
+        log1.contains("test_"),
+        "log1 should embed script stem: {}",
+        log1
+    );
+    assert!(
+        log2.contains("test_"),
+        "log2 should embed script stem: {}",
+        log2
+    );
+}
+
+fn run_and_extract_log(script: &std::path::Path) -> String {
+    let out = stacy()
+        .arg("run")
+        .arg("--format=json")
+        .arg(script)
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value =
+        serde_json::from_slice(&out).expect("stacy run --format=json should produce valid JSON");
+    v["log_file"]
+        .as_str()
+        .expect("JSON output must include log_file")
+        .to_string()
+}
+
 // ============================================================================
 // Cache command tests
 // ============================================================================

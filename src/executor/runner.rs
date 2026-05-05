@@ -45,6 +45,12 @@ pub struct RunOptions<'a> {
     pub working_dir: Option<&'a Path>,
     /// Local ado directories to prepend to S_ADO (resolved to absolute paths).
     pub local_ado_paths: Vec<PathBuf>,
+    /// Precomputed path where Stata will write the log file. When set, the
+    /// runner uses this directly instead of deriving it from the script's stem.
+    /// Callers that pass a wrapper script (see `executor::run_paths`) must set
+    /// this so the log path reflects the wrapper's basename, not the user's
+    /// script.
+    pub log_file: Option<PathBuf>,
 }
 
 impl<'a> RunOptions<'a> {
@@ -57,6 +63,7 @@ impl<'a> RunOptions<'a> {
             allow_global: false,
             working_dir: None,
             local_ado_paths: Vec::new(),
+            log_file: None,
         }
     }
 
@@ -87,6 +94,11 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_local_ado_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.local_ado_paths = paths;
+        self
+    }
+
+    pub fn with_log_file(mut self, path: PathBuf) -> Self {
+        self.log_file = Some(path);
         self
     }
 }
@@ -187,19 +199,20 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
 
     let duration = start.elapsed();
 
-    // Determine log file path
-    // Stata creates: {script_basename}.log in current working directory
-    // e.g., "build/analysis.do" -> "analysis.log" (NOT "build/analysis.log")
-    // When working_dir is set, the log lands in that directory.
-    let log_basename = script
-        .file_stem()
-        .map(|s| PathBuf::from(s).with_extension("log"))
-        .unwrap_or_else(|| script.with_extension("log"));
-    let log_file = if let Some(dir) = options.working_dir {
-        dir.join(&log_basename)
-    } else {
-        log_basename
-    };
+    // Determine log file path. Callers that want collision-safe parallel runs
+    // pass a precomputed path via `with_log_file` (see `executor::run_paths`).
+    // The fallback below preserves the legacy "{stem}.log in cwd" behavior for
+    // callers that don't (notably the unit tests in this module).
+    let log_file = options.log_file.clone().unwrap_or_else(|| {
+        let log_basename = script
+            .file_stem()
+            .map(|s| PathBuf::from(s).with_extension("log"))
+            .unwrap_or_else(|| script.with_extension("log"));
+        match options.working_dir {
+            Some(dir) => dir.join(&log_basename),
+            None => log_basename,
+        }
+    });
 
     // Extract exit code
     let exit_code = exit_code_from_status(&exit_status);

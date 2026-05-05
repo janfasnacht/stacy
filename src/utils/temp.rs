@@ -15,10 +15,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// The file is automatically deleted when the struct goes out of scope,
 /// ensuring cleanup even on panic or early return.
 ///
-/// The associated log file (created by Stata) is also cleaned up.
+/// The associated log file (created by Stata) is also cleaned up. Since #20,
+/// the executor wraps every script for collision-safe parallel runs, so the
+/// real log path no longer matches `script.with_extension("log")`. Callers
+/// must record the actual path via [`set_actual_log`](Self::set_actual_log)
+/// after execution; Drop cleans both.
 pub struct TempScript {
     path: PathBuf,
     log_path: PathBuf,
+    actual_log: Option<PathBuf>,
 }
 
 impl TempScript {
@@ -55,7 +60,11 @@ impl TempScript {
         // Ensure file is flushed to disk before Stata reads it
         file.flush()?;
 
-        Ok(Self { path, log_path })
+        Ok(Self {
+            path,
+            log_path,
+            actual_log: None,
+        })
     }
 
     /// Get the path to the temporary script.
@@ -67,6 +76,14 @@ impl TempScript {
     pub fn log_path(&self) -> &Path {
         &self.log_path
     }
+
+    /// Record the real log path produced by execution, so Drop cleans it up.
+    /// Call this with `result.log_file` after running Stata against the script.
+    /// See #20: the wrapper-script disambiguation means the real log lives at
+    /// `<stem>_<pid>_<nanos>_<n>.log`, not at `<stem>.log`.
+    pub fn set_actual_log(&mut self, path: PathBuf) {
+        self.actual_log = Some(path);
+    }
 }
 
 impl Drop for TempScript {
@@ -74,6 +91,11 @@ impl Drop for TempScript {
         // Best-effort cleanup - don't panic if files don't exist
         let _ = fs::remove_file(&self.path);
         let _ = fs::remove_file(&self.log_path);
+        if let Some(ref p) = self.actual_log {
+            if p != &self.log_path {
+                let _ = fs::remove_file(p);
+            }
+        }
     }
 }
 
@@ -148,6 +170,35 @@ mod tests {
         // Both files should be cleaned up
         assert!(!script_path.exists());
         assert!(!log_path.exists());
+    }
+
+    #[test]
+    fn test_temp_script_cleans_actual_log() {
+        // #20: the real log file no longer matches script.with_extension("log").
+        // set_actual_log() must register the real path so Drop cleans it.
+        let temp_dir = TempDir::new().unwrap();
+        let script_path;
+        let actual_log_path;
+
+        {
+            let mut script = TempScript::new("display 1", temp_dir.path()).unwrap();
+            script_path = script.path().to_path_buf();
+
+            // Simulate the wrapper-derived log path produced by RunPaths.
+            actual_log_path = temp_dir.path().join("_stacy_inline_xxx_42_0_0.log");
+            fs::write(&actual_log_path, "log content").unwrap();
+
+            script.set_actual_log(actual_log_path.clone());
+
+            assert!(script_path.exists());
+            assert!(actual_log_path.exists());
+        } // script dropped here
+
+        assert!(!script_path.exists(), "temp .do should be gone");
+        assert!(
+            !actual_log_path.exists(),
+            "actual log should be cleaned up via set_actual_log"
+        );
     }
 
     #[test]
