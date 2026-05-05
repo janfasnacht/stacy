@@ -28,6 +28,32 @@ fn package_version() -> Result<String> {
         .context("Missing package.version in Cargo.toml")
 }
 
+/// Hand-maintained .ado files whose `*! Version:` header is kept in sync with
+/// `Cargo.toml` by codegen. The bodies remain hand-edited.
+const HAND_MAINTAINED_VERSIONED_ADOS: &[&str] = &[
+    "_stacy_exec.ado",
+    "_stacy_find_binary.ado",
+    "stacy_setup.ado",
+];
+
+/// Replace the `*! Version: ...` header line in a hand-maintained .ado file
+/// with the current package version. Other lines are preserved verbatim.
+fn rewrite_version_header(content: &str, version: &str) -> String {
+    let mut out = String::with_capacity(content.len());
+    for line in content.split_inclusive('\n') {
+        let stripped = line.strip_suffix('\n').unwrap_or(line);
+        if stripped.starts_with("*! Version: ") {
+            out.push_str(&format!("*! Version: {}", version));
+            if line.ends_with('\n') {
+                out.push('\n');
+            }
+        } else {
+            out.push_str(line);
+        }
+    }
+    out
+}
+
 /// Run code generation
 pub fn run(check: bool, verbose: bool) -> Result<()> {
     let schema_path = project_root().join("schema/commands.toml");
@@ -68,6 +94,21 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
     // Generate main stacy.sthlp
     let main_sthlp = generate_main_sthlp(&schema)?;
     generated_files.push((stata_dir.join("stacy.sthlp"), main_sthlp));
+
+    // Generate wrapper/binary version-compatibility helper
+    let compat_ado = generate_compat_ado(&version);
+    generated_files.push((stata_dir.join("_stacy_compat.ado"), compat_ado));
+
+    // Bump the *! Version: header in hand-maintained .ado files so they stay
+    // in lockstep with the binary. Bodies are still hand-edited; only the
+    // version line is rewritten by codegen.
+    for file in HAND_MAINTAINED_VERSIONED_ADOS {
+        let path = stata_dir.join(file);
+        let existing = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        let updated = rewrite_version_header(&existing, &version);
+        generated_files.push((path, updated));
+    }
 
     // Generate documentation markdown files
     println!("Generating documentation...");
@@ -1087,6 +1128,168 @@ fn generate_citation_cff(version: &str) -> Result<String> {
 
 /// Extract release date for a version from CHANGELOG.md
 ///
+// =============================================================================
+// COMPAT (VERSION CHECK) GENERATION
+// =============================================================================
+
+/// Generate `stata/_stacy_compat.ado`, which provides the runtime check that
+/// the `stacy` binary's version is compatible with the wrappers.
+///
+/// Compatibility rule (matches issue #35): binary version `>=` wrapper version
+/// AND same major. Older binary or cross-major fails with a `stacy_setup, force`
+/// hint. Success is cached in `$stacy_version_checked` for the Stata session.
+///
+/// The version constant comes from `Cargo.toml`'s `package.version`, so the
+/// wrapper expectation always matches the binary built from the same source.
+fn generate_compat_ado(version: &str) -> String {
+    format!(
+        r#"*! _stacy_compat.ado - Wrapper/binary version compatibility check
+*! Part of stacy: Reproducible Stata Workflow Tool
+*! Version: {version}
+*! AUTO-GENERATED - DO NOT EDIT
+*! Regenerate with: cargo xtask codegen
+
+/*
+    Provides:
+      _stacy_compat_version  - returns r(version) with the wrapper version
+      _stacy_check_version   - validates that the stacy binary version is
+                               compatible with these wrappers (>= wrapper
+                               version, same major). Caches success in
+                               $stacy_version_checked.
+      _stacy_semver_cmp      - helper: compares two semver strings, sets
+                               r(cmp) in {{-1, 0, 1}} and r(same_major).
+
+    The version constant is generated from Cargo.toml's package.version, so
+    the wrapper expectation always matches the binary built from the same
+    source tree. On mismatch, _stacy_check_version errors with a
+    `stacy_setup, force` hint and exits 198.
+*/
+
+program define _stacy_compat_version, rclass
+    version 14.0
+    return local version "{version}"
+end
+
+program define _stacy_semver_cmp, rclass
+    version 14.0
+    args a b
+
+    * Strip optional pre-release / build suffix after '-' or '+'.
+    local a_clean = `"`a'"'
+    local dash = strpos(`"`a_clean'"', "-")
+    if `dash' > 0 local a_clean = substr(`"`a_clean'"', 1, `dash' - 1)
+    local plus = strpos(`"`a_clean'"', "+")
+    if `plus' > 0 local a_clean = substr(`"`a_clean'"', 1, `plus' - 1)
+
+    local b_clean = `"`b'"'
+    local dash = strpos(`"`b_clean'"', "-")
+    if `dash' > 0 local b_clean = substr(`"`b_clean'"', 1, `dash' - 1)
+    local plus = strpos(`"`b_clean'"', "+")
+    if `plus' > 0 local b_clean = substr(`"`b_clean'"', 1, `plus' - 1)
+
+    * Tokenize on '.': "1.2.3" -> tokens 1, ., 2, ., 3 at positions 1,2,3,4,5.
+    tokenize "`a_clean'", parse(".")
+    local a_major = real(`"`1'"')
+    local a_minor = real(`"`3'"')
+    local a_patch = real(`"`5'"')
+
+    tokenize "`b_clean'", parse(".")
+    local b_major = real(`"`1'"')
+    local b_minor = real(`"`3'"')
+    local b_patch = real(`"`5'"')
+
+    * Coerce missing components (e.g. "1.2") to 0.
+    if `a_major' >= . local a_major = 0
+    if `a_minor' >= . local a_minor = 0
+    if `a_patch' >= . local a_patch = 0
+    if `b_major' >= . local b_major = 0
+    if `b_minor' >= . local b_minor = 0
+    if `b_patch' >= . local b_patch = 0
+
+    local cmp = 0
+    if `a_major' < `b_major' local cmp = -1
+    else if `a_major' > `b_major' local cmp = 1
+    else if `a_minor' < `b_minor' local cmp = -1
+    else if `a_minor' > `b_minor' local cmp = 1
+    else if `a_patch' < `b_patch' local cmp = -1
+    else if `a_patch' > `b_patch' local cmp = 1
+
+    return scalar cmp = `cmp'
+    return scalar same_major = (`a_major' == `b_major')
+end
+
+program define _stacy_check_version, rclass
+    version 14.0
+    args binary
+
+    * Cached for the session - skip if already verified.
+    if "$stacy_version_checked" == "1" {{
+        exit 0
+    }}
+
+    local expected "{version}"
+
+    * Capture `<binary> --version` output.
+    tempfile ver_out
+    capture quietly shell "`binary'" --version > "`ver_out'" 2>&1
+    local shell_rc = _rc
+
+    tempname fh
+    local raw ""
+    capture file open `fh' using "`ver_out'", read text
+    if _rc == 0 {{
+        file read `fh' raw
+        file close `fh'
+    }}
+
+    if `shell_rc' != 0 | `"`raw'"' == "" {{
+        di as error "stacy: could not determine binary version from `binary' --version"
+        di as error "Run {{bf:stacy_setup, force}} to (re)install the binary."
+        exit 198
+    }}
+
+    * Output is typically `stacy X.Y.Z' - take the second whitespace token.
+    local raw_trim = strtrim(`"`raw'"')
+    tokenize `"`raw_trim'"'
+    local actual `"`2'"'
+    if `"`actual'"' == "" {{
+        local actual `"`1'"'
+    }}
+    * Strip leading 'v' if present (defensive; clap default does not emit it).
+    if substr(`"`actual'"', 1, 1) == "v" {{
+        local actual = substr(`"`actual'"', 2, .)
+    }}
+
+    if `"`actual'"' == "" {{
+        di as error "stacy: could not parse binary version from output: `raw'"
+        di as error "Run {{bf:stacy_setup, force}} to (re)install the binary."
+        exit 198
+    }}
+
+    _stacy_semver_cmp `"`actual'"' `"`expected'"'
+    local cmp = r(cmp)
+    local same_major = r(same_major)
+
+    if `same_major' == 0 {{
+        di as error "stacy: binary version `actual' is from a different major version than the Stata wrappers (`expected')."
+        di as error "Run {{bf:stacy_setup, force}} to install a matching binary."
+        exit 198
+    }}
+    if `cmp' < 0 {{
+        di as error "stacy: binary version `actual' is older than the Stata wrappers expect (>= `expected', same major)."
+        di as error "Run {{bf:stacy_setup, force}} to install a matching binary."
+        exit 198
+    }}
+
+    * Cache success for the rest of the session.
+    global stacy_version_checked "1"
+    return local actual `"`actual'"'
+    return local expected `"`expected'"'
+end
+"#
+    )
+}
+
 /// Looks for lines like: ## [1.1.0] - 2026-02-22
 fn extract_changelog_date(version: &str) -> Option<String> {
     let changelog_path = project_root().join("CHANGELOG.md");

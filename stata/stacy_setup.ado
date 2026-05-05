@@ -1,6 +1,6 @@
 *! stacy_setup.ado - Download and install stacy binary
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.0.1
+*! Version: 1.2.0
 
 /*
     Download and install the stacy binary from GitHub releases.
@@ -111,9 +111,11 @@ program define stacy_setup, rclass
         exit 198
     }
 
-    * Determine version
+    * Determine version (default: the version these wrappers were generated
+    * against, so `stacy_setup, force` always installs a binary that matches).
     if "`version'" == "" {
-        local version "v1.0.1"
+        _stacy_compat_version
+        local version "v`r(version)'"
     }
 
     * Construct download URL

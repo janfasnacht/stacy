@@ -2458,6 +2458,77 @@ fn test_run_log_path_unique_per_invocation() {
     );
 }
 
+// Issue #35 regression: when the binary stacy --version reports a version
+// older than the Stata wrappers expect, _stacy_check_version must fail fast
+// with a `stacy_setup, force` hint instead of letting the wrappers silently
+// run against a mismatched binary.
+//
+// This test shells out to Stata; run with: cargo test test_version_check -- --ignored
+#[test]
+#[ignore]
+fn test_version_check_rejects_stale_binary() {
+    let temp = TempDir::new().unwrap();
+
+    // Shim that pretends to be an old stacy: --version prints "stacy 0.0.1".
+    let shim = temp.path().join("stacy_shim");
+    fs::write(
+        &shim,
+        "#!/usr/bin/env bash\nif [ \"$1\" = \"--version\" ]; then\n  echo 'stacy 0.0.1'\n  exit 0\nfi\nexit 1\n",
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perm = fs::metadata(&shim).unwrap().permissions();
+        perm.set_mode(0o755);
+        fs::set_permissions(&shim, perm).unwrap();
+    }
+
+    let stata_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    let do_path = temp.path().join("check.do");
+    let do_body = format!(
+        "adopath ++ \"{stata}\"\nglobal stacy_binary \"{shim}\"\ncapture noisily _stacy_exec doctor\ndi \"_rc=\" _rc\n",
+        stata = stata_dir.display(),
+        shim = shim.display(),
+    );
+    fs::write(&do_path, do_body).unwrap();
+
+    // Run the .do via stata-mp (or whatever the user has on PATH). Skip the
+    // test gracefully if no Stata binary is found.
+    let path_var = std::env::var_os("PATH").unwrap_or_default();
+    let stata = ["stata-mp", "stata-se", "stata"].iter().find_map(|name| {
+        std::env::split_paths(&path_var)
+            .map(|p| p.join(name))
+            .find(|p| p.is_file())
+    });
+    let Some(stata) = stata else {
+        eprintln!("skipping: no stata binary found on PATH");
+        return;
+    };
+
+    let out = std::process::Command::new(stata)
+        .arg("-b")
+        .arg("do")
+        .arg(&do_path)
+        .current_dir(temp.path())
+        .output()
+        .expect("failed to run stata");
+    // Stata batch mode writes a log next to the .do file.
+    let log_path = temp.path().join("check.log");
+    let log = fs::read_to_string(&log_path).unwrap_or_default();
+    let combined = format!(
+        "stdout:\n{}\nstderr:\n{}\nlog:\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+        log,
+    );
+    assert!(
+        combined.contains("0.0.1") && combined.contains("stacy_setup, force"),
+        "expected version-mismatch error mentioning 0.0.1 and `stacy_setup, force`, got:\n{}",
+        combined
+    );
+}
+
 fn run_and_extract_log(script: &std::path::Path) -> String {
     let out = stacy()
         .arg("run")
