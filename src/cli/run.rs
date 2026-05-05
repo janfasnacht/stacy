@@ -432,7 +432,7 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
 
     // Create temp file for inline code
     let cwd = std::env::current_dir()?;
-    let temp_script = TempScript::new(&code, &cwd)?;
+    let mut temp_script = TempScript::new(&code, &cwd)?;
     let script_path = temp_script.path().to_path_buf();
 
     // Create executor
@@ -461,6 +461,10 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
 
     // Run Stata
     let mut result = executor.run(&script_path, project_root)?;
+    // The wrapper-derived log path doesn't match TempScript's expected
+    // `script.with_extension("log")`. Hand the real path to TempScript so
+    // its Drop cleans up the inline-run log (preserves pre-#20 behavior).
+    temp_script.set_actual_log(result.log_file.clone());
 
     if let Some(ref mut m) = metrics {
         m.end_phase("execution");
@@ -710,7 +714,7 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
     }
 
     // Run Stata (with trace injection if active)
-    let _trace_temp_script; // keep TempScript alive until after execution
+    let mut _trace_temp_script: Option<TempScript> = None; // keep TempScript alive until after execution
     let mut result = if let Some(depth) = args.trace {
         // Read the original script, prepend trace commands, run via TempScript
         let original_code = std::fs::read_to_string(effective_script).map_err(|e| {
@@ -733,12 +737,15 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
             executor.run(&temp_path, project_root)?
         }
     } else if let Some(ref dir) = working_dir {
-        _trace_temp_script = None;
         executor.run_in_dir(effective_script, project_root, dir)?
     } else {
-        _trace_temp_script = None;
         executor.run(effective_script, project_root)?
     };
+    // Tell the trace TempScript where the real log lives so Drop cleans it up
+    // (the wrapper stem doesn't match TempScript's `script.with_extension("log")`).
+    if let Some(ref mut ts) = _trace_temp_script {
+        ts.set_actual_log(result.log_file.clone());
+    }
 
     if let Some(ref mut m) = metrics {
         m.end_phase("execution");
@@ -946,7 +953,7 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
         let (ref abs_script, ref work_dir) = resolved_scripts[i];
 
         // When tracing, read file, prepend trace commands, run via TempScript
-        let _trace_temp_script;
+        let mut _trace_temp_script: Option<TempScript> = None;
         let result = if let Some(depth) = args.trace {
             let original_code = std::fs::read_to_string(abs_script).map_err(|e| {
                 crate::error::Error::Config(format!(
@@ -967,14 +974,16 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
             } else {
                 executor.run(&temp_path, project_root)?
             }
+        } else if let Some(ref dir) = work_dir {
+            executor.run_in_dir(abs_script, project_root, dir)?
         } else {
-            _trace_temp_script = None;
-            if let Some(ref dir) = work_dir {
-                executor.run_in_dir(abs_script, project_root, dir)?
-            } else {
-                executor.run(script, project_root)?
-            }
+            executor.run(script, project_root)?
         };
+        // Hand the wrapper-derived log path to the trace TempScript so Drop
+        // cleans it up (see #20 — the stem no longer matches script.with_extension).
+        if let Some(ref mut ts) = _trace_temp_script {
+            ts.set_actual_log(result.log_file.clone());
+        }
 
         let script_result = ScriptRunResult {
             script: script.clone(),

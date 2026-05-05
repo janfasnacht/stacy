@@ -168,7 +168,7 @@ fn build_adopath_from_lockfile(
             Ok(Some(lockfile)) => {
                 // Sort packages alphabetically for deterministic output
                 let mut sorted_packages: Vec<_> = lockfile.packages.iter().collect();
-                sorted_packages.sort_by(|(a, _), (b, _)| a.cmp(b));
+                sorted_packages.sort_by_key(|(a, _)| *a);
 
                 for (name, entry) in sorted_packages {
                     if let Ok(pkg_path) = global_cache::package_path(name, &entry.version) {

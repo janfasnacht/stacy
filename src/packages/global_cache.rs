@@ -115,7 +115,7 @@ pub fn build_s_ado(
 
     // Sort packages alphabetically for deterministic S_ADO order
     let mut sorted_packages: Vec<_> = lockfile.packages.iter().collect();
-    sorted_packages.sort_by(|(a, _), (b, _)| a.cmp(b));
+    sorted_packages.sort_by_key(|(a, _)| *a);
 
     for (name, entry) in sorted_packages {
         let pkg_path = package_path(name, &entry.version)?;
@@ -157,7 +157,7 @@ pub fn build_s_ado_for_groups(
 
     // Sort packages alphabetically for deterministic S_ADO order
     let mut sorted_packages: Vec<_> = lockfile.packages.iter().collect();
-    sorted_packages.sort_by(|(a, _), (b, _)| a.cmp(b));
+    sorted_packages.sort_by_key(|(a, _)| *a);
 
     for (name, entry) in sorted_packages {
         if groups.contains(&entry.group.as_str()) {

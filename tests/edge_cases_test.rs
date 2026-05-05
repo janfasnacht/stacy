@@ -5,13 +5,40 @@
 //! - Unicode in paths
 //! - Spaces in filenames
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const STACY_BINARY: &str = env!("CARGO_BIN_EXE_stacy");
 
 fn edge_case_script(name: &str) -> PathBuf {
     PathBuf::from("tests/edge_cases").join(name)
+}
+
+/// Run stacy with `--format=json` and return the log file path it reports.
+///
+/// Since #20, the log no longer lives at `script.with_extension("log")` —
+/// each invocation gets a unique stem. JSON output is the contract for
+/// discovering where Stata wrote the log.
+fn run_and_get_log(script: &Path) -> PathBuf {
+    let output = Command::new(STACY_BINARY)
+        .arg("run")
+        .arg("--format=json")
+        .arg(script)
+        .output()
+        .expect("Failed to execute stacy");
+
+    assert!(
+        output.status.success(),
+        "stacy run failed. stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .expect("stacy run --format=json should emit valid JSON");
+    let log = v["log_file"]
+        .as_str()
+        .expect("JSON output must include log_file");
+    PathBuf::from(log)
 }
 
 #[test]
@@ -22,22 +49,9 @@ fn test_spaces_in_filename() {
     // Verify script exists
     assert!(script.exists(), "Test script should exist");
 
-    // Run stacy with script containing spaces
-    let output = Command::new(STACY_BINARY)
-        .arg("run")
-        .arg(&script)
-        .output()
-        .expect("Failed to execute stacy");
+    // Run stacy and ask it where the log landed (#20: not script.with_extension("log") anymore).
+    let log_file = run_and_get_log(&script);
 
-    // Should succeed
-    assert!(
-        output.status.success(),
-        "stacy should handle filenames with spaces. stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Check that log file was created
-    let log_file = script.with_extension("log");
     assert!(
         log_file.exists(),
         "Log file should be created: {}",
@@ -53,22 +67,9 @@ fn test_unicode_in_filename() {
     // Verify script exists
     assert!(script.exists(), "Test script should exist");
 
-    // Run stacy with script containing Unicode characters
-    let output = Command::new(STACY_BINARY)
-        .arg("run")
-        .arg(&script)
-        .output()
-        .expect("Failed to execute stacy");
+    // Run stacy and ask it where the log landed (#20).
+    let log_file = run_and_get_log(&script);
 
-    // Should succeed
-    assert!(
-        output.status.success(),
-        "stacy should handle Unicode in filenames. stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Check that log file was created
-    let log_file = script.with_extension("log");
     assert!(
         log_file.exists(),
         "Log file should be created: {}",
@@ -84,22 +85,9 @@ fn test_large_log_file() {
     // Verify script exists
     assert!(script.exists(), "Test script should exist");
 
-    // Run stacy with script that generates large log
-    let output = Command::new(STACY_BINARY)
-        .arg("run")
-        .arg(&script)
-        .output()
-        .expect("Failed to execute stacy");
+    // Run stacy and ask it where the log landed (#20).
+    let log_file = run_and_get_log(&script);
 
-    // Should succeed
-    assert!(
-        output.status.success(),
-        "stacy should handle large log files. stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    // Check that log file was created and is reasonably large
-    let log_file = script.with_extension("log");
     assert!(
         log_file.exists(),
         "Log file should be created: {}",

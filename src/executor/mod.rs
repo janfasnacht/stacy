@@ -1,6 +1,7 @@
 pub mod binary;
 pub mod log_reader;
 pub mod progress;
+pub mod run_paths;
 pub mod runner;
 pub mod verbosity;
 pub mod wrapper;
@@ -154,6 +155,26 @@ impl StataExecutor {
         use runner::{run_stata, RunOptions};
         use std::thread;
 
+        // Resolve absolute paths up front so RunPaths can derive a unique log
+        // location regardless of the caller's cwd. The user's script may be
+        // relative (e.g. from unit tests); the working_dir from cli/run.rs is
+        // already absolute, but we default to current_dir() if absent.
+        let abs_script: PathBuf = if script.is_absolute() {
+            script.to_path_buf()
+        } else {
+            std::env::current_dir()?.join(script)
+        };
+        let effective_working_dir: PathBuf = match working_dir {
+            Some(dir) => dir.to_path_buf(),
+            None => std::env::current_dir()?,
+        };
+
+        // Per-invocation wrapper + unique log path. `_paths` is bound for the
+        // full function scope so the wrapper file outlives every read of the
+        // log (parse_log_for_errors, get_error_context, streaming threads).
+        // See src/executor/run_paths.rs and #20 for rationale.
+        let _paths = run_paths::RunPaths::prepare(&abs_script, &effective_working_dir)?;
+
         // Build run options
         let mut options = RunOptions::new(&self.stata_binary);
         if let Some(root) = project_root {
@@ -172,6 +193,7 @@ impl StataExecutor {
         if let Some(timeout) = self.timeout {
             options = options.with_timeout(timeout);
         }
+        options = options.with_log_file(_paths.log.clone());
 
         // Show execution details if VeryVerbose
         if self.verbosity.should_show_execution_details() {
@@ -221,23 +243,15 @@ impl StataExecutor {
             if let Some(timeout) = self.timeout {
                 eprintln!("  Timeout: {}s", timeout.as_secs());
             }
-            eprintln!("  Command: stata-mp -b -q do {}", script.display());
+            // The runner spawns Stata against a wrapper that delegates to the
+            // user's script; show both so `-vv` reflects what actually runs.
+            eprintln!("  Command: stata-mp -b -q do {}", _paths.wrapper.display());
+            eprintln!("  Wraps: {}", abs_script.display());
             eprintln!();
         }
 
-        // Determine log file path
-        // Stata creates: {script_basename}.log in current working directory
-        // e.g., "build/analysis.do" -> "analysis.log" (NOT "build/analysis.log")
-        // When working_dir is set, the log lands in that directory.
-        let log_basename = script
-            .file_stem()
-            .map(|s| PathBuf::from(s).with_extension("log"))
-            .unwrap_or_else(|| script.with_extension("log"));
-        let log_file = if let Some(dir) = working_dir {
-            dir.join(&log_basename)
-        } else {
-            log_basename
-        };
+        // Log file path was computed by RunPaths above; reuse it for streaming.
+        let log_file = _paths.log.clone();
 
         // Start log streaming thread if verbose or interactive
         let stream_handle = if self.verbosity.should_stream_raw() {
@@ -263,8 +277,10 @@ impl StataExecutor {
             None
         };
 
-        // Run Stata
-        let run_result = run_stata(script, options)?;
+        // Run Stata against the wrapper script, not the user's script.
+        // Stata derives the log basename from the script path it's given —
+        // the wrapper has a unique stem so concurrent runs cannot collide.
+        let run_result = run_stata(&_paths.wrapper, options)?;
 
         // Wait for streaming thread to finish
         if let Some(handle) = stream_handle {
