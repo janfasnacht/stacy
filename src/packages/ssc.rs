@@ -261,7 +261,7 @@ pub fn calculate_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let result = hasher.finalize();
-    format!("{:x}", result)
+    hex::encode(result)
 }
 
 /// Calculate combined checksum from multiple checksums
@@ -275,7 +275,7 @@ pub fn calculate_combined_checksum(checksums: &[String]) -> String {
         hasher.update(checksum.as_bytes());
     }
     let result = hasher.finalize();
-    format!("{:x}", result)
+    hex::encode(result)
 }
 
 /// Check if an error is a connection/network error (vs. 404, etc.)

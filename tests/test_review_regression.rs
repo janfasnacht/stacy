@@ -34,7 +34,7 @@ fn stacy() -> Command {
 fn sha256_hex(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Compute combined checksum from individual file checksums
@@ -46,7 +46,7 @@ fn combined_checksum(checksums: &[String]) -> String {
     for cs in &sorted {
         hasher.update(cs.as_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 /// Set up a temp project directory with stacy.toml and stacy.lock,
