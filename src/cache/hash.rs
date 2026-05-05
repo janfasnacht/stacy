@@ -22,7 +22,7 @@ pub fn hash_file(path: &Path) -> Result<String> {
     hasher.update(&content);
     let result = hasher.finalize();
 
-    Ok(format!("{:x}", result))
+    Ok(hex::encode(result))
 }
 
 /// Compute SHA256 hash of a string
@@ -30,7 +30,7 @@ pub fn hash_string(content: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(content.as_bytes());
     let result = hasher.finalize();
-    format!("{:x}", result)
+    hex::encode(result)
 }
 
 /// Hash a script and all its dependencies, returning a map of paths to hashes
@@ -80,7 +80,7 @@ impl DependencyHashes {
         }
 
         let result = hasher.finalize();
-        format!("{:x}", result)
+        hex::encode(result)
     }
 }
 
