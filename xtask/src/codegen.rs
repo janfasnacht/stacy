@@ -95,9 +95,20 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
     let main_sthlp = generate_main_sthlp(&schema)?;
     generated_files.push((stata_dir.join("stacy.sthlp"), main_sthlp));
 
-    // Generate wrapper/binary version-compatibility helper
-    let compat_ado = generate_compat_ado(&version);
-    generated_files.push((stata_dir.join("_stacy_compat.ado"), compat_ado));
+    // Generate wrapper/binary version-compatibility helpers. Split into three
+    // files so each program autoloads from a filename matching its name.
+    generated_files.push((
+        stata_dir.join("_stacy_compat_version.ado"),
+        generate_compat_version_ado(&version),
+    ));
+    generated_files.push((
+        stata_dir.join("_stacy_semver_cmp.ado"),
+        generate_semver_cmp_ado(&version),
+    ));
+    generated_files.push((
+        stata_dir.join("_stacy_check_version.ado"),
+        generate_check_version_ado(&version),
+    ));
 
     // Bump the *! Version: header in hand-maintained .ado files so they stay
     // in lockstep with the binary. Bodies are still hand-edited; only the
@@ -1132,43 +1143,32 @@ fn generate_citation_cff(version: &str) -> Result<String> {
 // COMPAT (VERSION CHECK) GENERATION
 // =============================================================================
 
-/// Generate `stata/_stacy_compat.ado`, which provides the runtime check that
-/// the `stacy` binary's version is compatible with the wrappers.
-///
-/// Compatibility rule (matches issue #35): binary version `>=` wrapper version
-/// AND same major. Older binary or cross-major fails with a `stacy_setup, force`
-/// hint. Success is cached in `$stacy_version_checked` for the Stata session.
-///
-/// The version constant comes from `Cargo.toml`'s `package.version`, so the
-/// wrapper expectation always matches the binary built from the same source.
-fn generate_compat_ado(version: &str) -> String {
+/// Per-program version-compat wrappers. Stata only autoloads an `.ado` when
+/// its basename matches the primary `program define` (issue #37), so each
+/// lives in its own file. Version comes from `Cargo.toml`.
+fn generate_compat_version_ado(version: &str) -> String {
     format!(
-        r#"*! _stacy_compat.ado - Wrapper/binary version compatibility check
+        r#"*! _stacy_compat_version.ado - Wrapper version constant
 *! Part of stacy: Reproducible Stata Workflow Tool
 *! Version: {version}
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
-/*
-    Provides:
-      _stacy_compat_version  - returns r(version) with the wrapper version
-      _stacy_check_version   - validates that the stacy binary version is
-                               compatible with these wrappers (>= wrapper
-                               version, same major). Caches success in
-                               $stacy_version_checked.
-      _stacy_semver_cmp      - helper: compares two semver strings, sets
-                               r(cmp) in {{-1, 0, 1}} and r(same_major).
-
-    The version constant is generated from Cargo.toml's package.version, so
-    the wrapper expectation always matches the binary built from the same
-    source tree. On mismatch, _stacy_check_version errors with a
-    `stacy_setup, force` hint and exits 198.
-*/
-
 program define _stacy_compat_version, rclass
     version 14.0
     return local version "{version}"
 end
+"#
+    )
+}
+
+fn generate_semver_cmp_ado(version: &str) -> String {
+    format!(
+        r#"*! _stacy_semver_cmp.ado - Semver comparison helper
+*! Part of stacy: Reproducible Stata Workflow Tool
+*! Version: {version}
+*! AUTO-GENERATED - DO NOT EDIT
+*! Regenerate with: cargo xtask codegen
 
 program define _stacy_semver_cmp, rclass
     version 14.0
@@ -1217,6 +1217,17 @@ program define _stacy_semver_cmp, rclass
     return scalar cmp = `cmp'
     return scalar same_major = (`a_major' == `b_major')
 end
+"#
+    )
+}
+
+fn generate_check_version_ado(version: &str) -> String {
+    format!(
+        r#"*! _stacy_check_version.ado - Wrapper/binary version compatibility check
+*! Part of stacy: Reproducible Stata Workflow Tool
+*! Version: {version}
+*! AUTO-GENERATED - DO NOT EDIT
+*! Regenerate with: cargo xtask codegen
 
 program define _stacy_check_version, rclass
     version 14.0

@@ -627,12 +627,10 @@ fn test_init_schema_has_interactive_not_yes() {
 // Wrapper/binary version-compat guard (issue #35)
 // =============================================================================
 
-/// `_stacy_compat.ado` is generated from `Cargo.toml`'s `package.version`.
-/// If a release bumps Cargo.toml without re-running `cargo xtask codegen`,
-/// the wrappers and binary disagree at runtime. This test (plus the existing
-/// codegen --check in CI) makes that drift impossible to merge.
+/// Version constants in the compat .ado files must match Cargo.toml so the
+/// wrappers don't disagree with the binary at runtime.
 #[test]
-fn test_compat_ado_version_matches_cargo_toml() {
+fn test_version_compat_ados_match_cargo_toml() {
     let cargo_toml = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
         .expect("Failed to read Cargo.toml");
     let parsed: toml::Value = toml::from_str(&cargo_toml).expect("Failed to parse Cargo.toml");
@@ -640,32 +638,119 @@ fn test_compat_ado_version_matches_cargo_toml() {
         .as_str()
         .expect("Cargo.toml missing package.version");
 
-    let compat_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata/_stacy_compat.ado");
-    let compat = fs::read_to_string(&compat_path).expect("Failed to read _stacy_compat.ado");
+    let stata_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    let header = format!("*! Version: {}", pkg_version);
 
-    // Header line.
-    assert!(
-        compat.contains(&format!("*! Version: {}", pkg_version)),
-        "_stacy_compat.ado header version does not match Cargo.toml ({}). \
-         Run `cargo xtask codegen`.",
-        pkg_version
-    );
+    for file in [
+        "_stacy_compat_version.ado",
+        "_stacy_semver_cmp.ado",
+        "_stacy_check_version.ado",
+    ] {
+        let content = fs::read_to_string(stata_dir.join(file))
+            .unwrap_or_else(|_| panic!("Failed to read {}", file));
+        assert!(
+            content.contains(&header),
+            "{} header version does not match Cargo.toml ({}). \
+             Run `cargo xtask codegen`.",
+            file,
+            pkg_version
+        );
+    }
 
     // Constant returned by _stacy_compat_version.
+    let cv = fs::read_to_string(stata_dir.join("_stacy_compat_version.ado"))
+        .expect("Failed to read _stacy_compat_version.ado");
     assert!(
-        compat.contains(&format!("return local version \"{}\"", pkg_version)),
-        "_stacy_compat.ado _stacy_compat_version constant does not match \
+        cv.contains(&format!("return local version \"{}\"", pkg_version)),
+        "_stacy_compat_version.ado return constant does not match \
          Cargo.toml ({}). Run `cargo xtask codegen`.",
         pkg_version
     );
 
     // The min-compat constant inside _stacy_check_version.
+    let chk = fs::read_to_string(stata_dir.join("_stacy_check_version.ado"))
+        .expect("Failed to read _stacy_check_version.ado");
     assert!(
-        compat.contains(&format!("local expected \"{}\"", pkg_version)),
-        "_stacy_compat.ado expected-version constant does not match \
+        chk.contains(&format!("local expected \"{}\"", pkg_version)),
+        "_stacy_check_version.ado expected-version constant does not match \
          Cargo.toml ({}). Run `cargo xtask codegen`.",
         pkg_version
     );
+}
+
+/// Stata only autoloads an `.ado` when its basename matches the first
+/// `program define` — otherwise callers hit `r(199)` (issue #37).
+#[test]
+fn test_ado_filename_matches_primary_program() {
+    let stata_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    let entries = fs::read_dir(&stata_dir).expect("Failed to read stata/");
+
+    for entry in entries {
+        let entry = entry.expect("Failed to read dir entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("ado") {
+            continue;
+        }
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .expect("ado file has no stem");
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("Failed to read {}", path.display()));
+
+        let first_program = content
+            .lines()
+            .find_map(|line| {
+                line.trim_start()
+                    .strip_prefix("program define ")
+                    .map(|rest| {
+                        rest.split(|c: char| c.is_whitespace() || c == ',')
+                            .next()
+                            .unwrap_or("")
+                            .to_string()
+                    })
+            })
+            .unwrap_or_else(|| panic!("{} has no `program define`", path.display()));
+
+        assert_eq!(
+            first_program,
+            stem,
+            "{}: primary program `{}` does not match filename — Stata won't autoload it",
+            path.display(),
+            first_program,
+        );
+    }
+}
+
+/// Every shipped `.ado` must be in `stacy.pkg` or `net install` silently
+/// drops it (issue #37).
+#[test]
+fn test_pkg_manifest_lists_every_ado() {
+    let stata_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    let pkg = fs::read_to_string(stata_dir.join("stacy.pkg")).expect("Failed to read stacy.pkg");
+
+    let listed: HashSet<&str> = pkg
+        .lines()
+        .filter_map(|line| line.strip_prefix("f ").map(str::trim))
+        .collect();
+
+    let entries = fs::read_dir(&stata_dir).expect("Failed to read stata/");
+    for entry in entries {
+        let entry = entry.expect("Failed to read dir entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("ado") {
+            continue;
+        }
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .expect("ado file has no name");
+        assert!(
+            listed.contains(name),
+            "{} is in stata/ but not listed in stacy.pkg — net install won't deliver it",
+            name,
+        );
+    }
 }
 
 /// Hand-maintained wrappers must keep their `*! Version:` header in lockstep

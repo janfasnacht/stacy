@@ -15,6 +15,9 @@ d
 * Core utilities (internal)
 f _stacy_find_binary.ado
 f _stacy_exec.ado
+f _stacy_compat_version.ado
+f _stacy_semver_cmp.ado
+f _stacy_check_version.ado
 
 * Main entry point
 f stacy.ado
