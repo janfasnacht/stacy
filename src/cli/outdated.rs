@@ -229,7 +229,7 @@ mod tests {
 
     #[test]
     fn test_outdated_info_sorting() {
-        let mut packages = vec![
+        let mut packages = [
             OutdatedInfo {
                 name: "zebra".to_string(),
                 current: "1.0".to_string(),

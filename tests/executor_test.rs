@@ -50,7 +50,7 @@ fn test_syntax_error_script() {
 
     // But our parser should detect the error
     let errors = parse_log_for_errors(&result.log_file).expect("Failed to parse log");
-    assert!(errors.len() > 0, "Syntax error script should have errors");
+    assert!(!errors.is_empty(), "Syntax error script should have errors");
 
     // Should detect r(199)
     let has_199 = errors.iter().any(|e| e.r_code() == Some(199));
@@ -70,7 +70,7 @@ fn test_file_not_found_script() {
 
     // Parse should detect file error
     let errors = parse_log_for_errors(&result.log_file).expect("Failed to parse log");
-    assert!(errors.len() > 0, "File error script should have errors");
+    assert!(!errors.is_empty(), "File error script should have errors");
 
     // Should detect r(601)
     let has_601 = errors.iter().any(|e| e.r_code() == Some(601));

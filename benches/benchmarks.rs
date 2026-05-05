@@ -56,7 +56,7 @@ fn bench_error_extraction(c: &mut Criterion) {
                 if line.starts_with("r(") && line.ends_with(");") {
                     let code_str = &line[2..line.len() - 2];
                     let _code: Result<u32, _> = code_str.parse();
-                    black_box(_code);
+                    let _ = black_box(_code);
                 }
             }
         });

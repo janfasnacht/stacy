@@ -607,7 +607,7 @@ end of do-file\n";
         let mut temp = NamedTempFile::new()?;
         writeln!(temp, ". display \"hello\"")?;
         writeln!(temp, "hello")?;
-        writeln!(temp, "")?;
+        writeln!(temp)?;
         writeln!(temp, "end of do-file")?;
         temp.flush()?;
 
@@ -617,9 +617,9 @@ end of do-file\n";
         let mut temp_fail = NamedTempFile::new()?;
         writeln!(temp_fail, ". invalid command")?;
         writeln!(temp_fail, "unrecognized command")?;
-        writeln!(temp_fail, "")?;
+        writeln!(temp_fail)?;
         writeln!(temp_fail, "end of do-file")?;
-        writeln!(temp_fail, "")?;
+        writeln!(temp_fail)?;
         writeln!(temp_fail, "r(199);")?;
         temp_fail.flush()?;
 

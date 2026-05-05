@@ -306,7 +306,6 @@ mod tests {
     #[test]
     #[cfg(target_os = "macos")]
     fn test_macos_locations_defined() {
-        assert!(!MACOS_APP_LOCATIONS.is_empty());
         // Should include StataNow path
         assert!(MACOS_APP_LOCATIONS.iter().any(|p| p.contains("StataNow")));
     }
@@ -314,7 +313,6 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn test_linux_locations_defined() {
-        assert!(!LINUX_LOCATIONS.is_empty());
         // Should include stata18 path
         assert!(LINUX_LOCATIONS.iter().any(|p| p.contains("stata18")));
     }
@@ -322,7 +320,6 @@ mod tests {
     #[test]
     #[cfg(target_os = "windows")]
     fn test_windows_locations_defined() {
-        assert!(!WINDOWS_LOCATIONS.is_empty());
         // Should include StataNow path
         assert!(WINDOWS_LOCATIONS.iter().any(|p| p.contains("StataNow")));
         // Should include both 64-bit and 32-bit locations

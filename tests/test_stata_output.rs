@@ -2,14 +2,14 @@
 //!
 //! Verifies that all commands produce valid Stata syntax that can be directly executed.
 
-use assert_cmd::Command;
+use assert_cmd::{cargo_bin_cmd, Command};
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
 
 /// Get the stacy binary
 fn stacy() -> Command {
-    Command::cargo_bin("stacy").unwrap()
+    cargo_bin_cmd!("stacy")
 }
 
 // =============================================================================
@@ -322,7 +322,7 @@ fn test_stata_booleans_are_0_or_1() {
 
     // Check boolean fields specifically
     if let Some(ready_line) = stdout.lines().find(|l| l.contains("stacy_ready")) {
-        let value = ready_line.split('=').last().unwrap().trim();
+        let value = ready_line.split('=').next_back().unwrap().trim();
         assert!(
             value == "0" || value == "1",
             "Boolean should be 0 or 1: {}",

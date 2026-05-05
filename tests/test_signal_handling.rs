@@ -1,7 +1,6 @@
 /// Tests for signal handling (SIGINT, SIGTERM, SIGKILL)
 ///
 /// Verifies that stacy correctly handles process interruption
-use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -79,7 +78,7 @@ fn test_background_kill() {
     // 3. Check exit code
 
     let mut child = Command::new("./target/debug/stacy")
-        .args(&["run", "tests/log-analysis/07_infinite_loop.do", "--quiet"])
+        .args(["run", "tests/log-analysis/07_infinite_loop.do", "--quiet"])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -91,7 +90,6 @@ fn test_background_kill() {
     // Kill with SIGTERM
     #[cfg(unix)]
     {
-        use std::os::unix::process::CommandExt;
         unsafe {
             libc::kill(child.id() as i32, libc::SIGTERM);
         }

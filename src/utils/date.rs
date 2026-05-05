@@ -68,7 +68,7 @@ mod tests {
 
         // Year should be reasonable (2020-2099)
         let year: u32 = result[..4].parse().unwrap();
-        assert!(year >= 2020 && year <= 2099);
+        assert!((2020..=2099).contains(&year));
 
         // Month 01-12
         let month: u32 = result[4..6].parse().unwrap();
