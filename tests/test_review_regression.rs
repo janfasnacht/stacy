@@ -4,7 +4,7 @@
 //! validating fixes for cache integrity (C1), error honesty (C4),
 //! S_ADO isolation (NEW-1), deterministic ordering (M1), and --Break-- detection (C6).
 
-use assert_cmd::Command;
+use assert_cmd::{cargo_bin_cmd, Command};
 use predicates::prelude::*;
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -23,7 +23,7 @@ fn cache_packages_dir(root: &Path) -> PathBuf {
 
 /// Get the stacy binary for testing.
 fn stacy() -> Command {
-    Command::cargo_bin("stacy").unwrap()
+    cargo_bin_cmd!("stacy")
 }
 
 // ============================================================================

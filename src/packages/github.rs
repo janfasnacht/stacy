@@ -615,8 +615,6 @@ mod tests {
     #[test]
     fn test_synthesize_manifest_from_tree_response() {
         // Test the tree filtering logic by simulating what synthesize_manifest would find
-        use crate::packages::pkg_parser::FileType;
-
         let stata_extensions = ["ado", "sthlp", "hlp", "dlg", "mlib", "mata"];
         let name = "mypkg";
 

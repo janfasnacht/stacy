@@ -2,14 +2,14 @@
 //!
 //! Tests the complete CLI workflow from init to run.
 
-use assert_cmd::Command;
+use assert_cmd::{cargo_bin_cmd, Command};
 use predicates::prelude::*;
 use std::fs;
 use tempfile::TempDir;
 
 /// Get the stacy binary
 fn stacy() -> Command {
-    Command::cargo_bin("stacy").unwrap()
+    cargo_bin_cmd!("stacy")
 }
 
 #[test]

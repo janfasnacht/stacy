@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn test_package_info_sorting() {
-        let mut packages = vec![
+        let mut packages = [
             PackageInfo {
                 name: "zebra".to_string(),
                 version: "1.0".to_string(),

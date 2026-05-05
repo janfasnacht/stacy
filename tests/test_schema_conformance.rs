@@ -838,7 +838,7 @@ fn read_all_generated_ado_files() -> Vec<(String, String)> {
     for entry in fs::read_dir(&stata_dir).expect("Failed to read stata directory") {
         let entry = entry.expect("Failed to read directory entry");
         let path = entry.path();
-        if path.extension().map_or(false, |e| e == "ado") {
+        if path.extension().is_some_and(|e| e == "ado") {
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             let content = fs::read_to_string(&path).expect("Failed to read ado file");
             // Only check auto-generated files
