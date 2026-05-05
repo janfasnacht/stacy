@@ -80,7 +80,7 @@ predicates = "3.1"      # Test assertions
 serial_test = "3.4"     # Sequential test execution
 
 # Benchmarking
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8", features = ["html_reports"] }
 
 [profile.release]
 # Optimize for size and speed
