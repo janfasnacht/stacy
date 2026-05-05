@@ -24,7 +24,7 @@ anyhow = "1.0"
 walkdir = "2.4"
 
 # Template rendering
-minijinja = "2.0"
+minijinja = "2.19"
 
 # Diff for verification
 similar = "2.4"
