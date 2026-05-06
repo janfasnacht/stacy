@@ -142,8 +142,10 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
             installed: 0,
             already_installed: 0,
             skipped: 0,
+            failed: 0,
             total: 0,
             package_count: 0,
+            error: None,
         };
 
         match format {
@@ -194,8 +196,36 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
         .filter(|r| matches!(r.action, SyncAction::Skipped(_)))
         .count() as i32;
 
+    // Compute checksum failures *before* emitting output, so the Stata/JSON
+    // output reflects the real outcome instead of a stale "success".
+    let failed_names: Vec<&str> = if verify {
+        results
+            .iter()
+            .filter(|r| r.checksum_ok == Some(false))
+            .map(|r| r.name.as_str())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let failed_count = failed_names.len() as i32;
+
+    let error_message: Option<String> = if failed_count > 0 {
+        Some(format!(
+            "{} package(s) failed checksum verification: {}. Use --no-verify to skip.",
+            failed_count,
+            failed_names.join(", ")
+        ))
+    } else if skipped_count > 0 && installed_count == 0 {
+        Some(format!(
+            "{} package(s) skipped, none installed",
+            skipped_count
+        ))
+    } else {
+        None
+    };
+
     let output = InstallOutput {
-        status: if skipped_count > 0 && installed_count == 0 {
+        status: if error_message.is_some() {
             "error".to_string()
         } else {
             "success".to_string()
@@ -203,29 +233,21 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
         installed: installed_count,
         already_installed: already_count,
         skipped: skipped_count,
+        failed: failed_count,
         total: results.len() as i32,
         package_count: results.len(),
+        error: error_message.clone(),
     };
 
     // Output results
     match format {
-        OutputFormat::Json => print_sync_json_output(&results),
+        OutputFormat::Json => print_sync_json_output(&results, &output),
         OutputFormat::Stata => println!("{}", output.to_stata()),
         OutputFormat::Human => print_sync_human_output(&results),
     }
 
-    // Checksum failure is a hard error
-    if verify {
-        let fail_count = results
-            .iter()
-            .filter(|r| r.checksum_ok == Some(false))
-            .count();
-        if fail_count > 0 {
-            return Err(Error::Config(format!(
-                "{} package(s) failed checksum verification. Use --no-verify to skip.",
-                fail_count
-            )));
-        }
+    if failed_count > 0 {
+        return Err(Error::Config(error_message.unwrap()));
     }
 
     Ok(())
@@ -444,7 +466,7 @@ fn verify_package_checksum(name: &str, entry: &crate::project::PackageEntry) -> 
     Some(actual == expected)
 }
 
-fn print_sync_json_output(results: &[SyncedPackage]) {
+fn print_sync_json_output(results: &[SyncedPackage], summary: &InstallOutput) {
     use serde_json::json;
 
     let packages: Vec<_> = results
@@ -467,27 +489,16 @@ fn print_sync_json_output(results: &[SyncedPackage]) {
         })
         .collect();
 
-    let installed_count = results
-        .iter()
-        .filter(|r| matches!(r.action, SyncAction::Installed))
-        .count();
-    let already_count = results
-        .iter()
-        .filter(|r| matches!(r.action, SyncAction::AlreadyInstalled))
-        .count();
-    let skipped_count = results
-        .iter()
-        .filter(|r| matches!(r.action, SyncAction::Skipped(_)))
-        .count();
-
     let output = json!({
-        "status": "success",
+        "status": summary.status,
+        "error": summary.error,
         "packages": packages,
         "summary": {
-            "installed": installed_count,
-            "already_installed": already_count,
-            "skipped": skipped_count,
-            "total": results.len(),
+            "installed": summary.installed,
+            "already_installed": summary.already_installed,
+            "skipped": summary.skipped,
+            "failed": summary.failed,
+            "total": summary.total,
         }
     });
 
