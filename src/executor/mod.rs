@@ -151,7 +151,6 @@ impl StataExecutor {
         args: std::collections::HashMap<String, String>,
         working_dir: Option<&Path>,
     ) -> Result<ExecutionResult> {
-        use crate::error::parser::parse_log_for_errors;
         use runner::{run_stata, RunOptions};
         use std::thread;
 
@@ -287,15 +286,20 @@ impl StataExecutor {
             let _ = handle.join();
         }
 
-        // Parse log file for errors (with timing)
+        // Parse log file for errors (with timing).
+        //
+        // Signal-killed (SIGTERM from our watchdog, OOM, ctrl-C) → ProcessKilled.
+        // Otherwise — clean exit, code 0 or non-zero — inspect log + stderr.
+        // A non-zero exit with no log is a launch failure (license seat
+        // exhausted, missing binary, init error), and that's exactly the
+        // case where Stata's stderr carries the real diagnostic (#21).
         let parse_start = Instant::now();
-        let errors = if run_result.completed {
-            parse_log_for_errors(&run_result.log_file)?
-        } else {
-            // Process was killed, create error for that
+        let errors = if run_result.signaled {
             vec![StataError::ProcessKilled {
                 exit_code: run_result.exit_code,
             }]
+        } else {
+            parse_or_explain(&run_result)?
         };
         let parse_duration = parse_start.elapsed();
 
@@ -327,4 +331,69 @@ impl StataExecutor {
             metrics: None, // Metrics collection happens in CLI layer
         })
     }
+}
+
+/// Parse the log; on missing/empty/incomplete logs, fold captured stderr
+/// into the error message instead of the unhelpful default
+/// "Log file incomplete: no 'end of do-file' marker found".
+///
+/// Three cases:
+/// 1. Log doesn't exist or is empty → Stata never wrote anything. Almost
+///    always a launch failure (license seat exhausted, missing binary,
+///    init error). The real diagnostic is on stderr.
+/// 2. Log exists but parser reports it incomplete → process exited before
+///    writing the trailer. Likely killed mid-run by something stacy didn't
+///    initiate (OOM, external SIGKILL); stderr may also help.
+/// 3. Log parses cleanly → return whatever the parser returned.
+fn parse_or_explain(run: &runner::RunResult) -> Result<Vec<StataError>> {
+    use crate::error::parser::parse_log_for_errors;
+    use crate::error::Error;
+
+    let metadata = std::fs::metadata(&run.log_file).ok();
+    let log_present = metadata.as_ref().is_some_and(|m| m.len() > 0);
+
+    if !log_present {
+        return Err(Error::Execution(format_no_log_message(run)));
+    }
+
+    match parse_log_for_errors(&run.log_file) {
+        Ok(errs) => Ok(errs),
+        Err(Error::Parse(msg)) if msg.starts_with("Log file incomplete") => {
+            Err(Error::Execution(format_incomplete_log_message(run)))
+        }
+        Err(other) => Err(other),
+    }
+}
+
+fn format_no_log_message(run: &runner::RunResult) -> String {
+    let trimmed = run.stderr.trim();
+    let mut msg = format!(
+        "Stata produced no log file (exit code {}). Expected: {}",
+        run.exit_code,
+        run.log_file.display()
+    );
+    if !trimmed.is_empty() {
+        msg.push_str("\nStata stderr:\n");
+        msg.push_str(trimmed);
+    } else {
+        msg.push_str(
+            "\nStata wrote nothing to stderr. The binary may have failed to launch \
+             (missing executable, missing license seat, or environment misconfiguration).",
+        );
+    }
+    msg
+}
+
+fn format_incomplete_log_message(run: &runner::RunResult) -> String {
+    let trimmed = run.stderr.trim();
+    let mut msg = format!(
+        "Stata exited (code {}) before writing 'end of do-file' to the log. \
+         The process likely terminated mid-run.",
+        run.exit_code
+    );
+    if !trimmed.is_empty() {
+        msg.push_str("\nStata stderr:\n");
+        msg.push_str(trimmed);
+    }
+    msg
 }

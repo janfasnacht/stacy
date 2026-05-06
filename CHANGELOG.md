@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Surface Stata's stderr on launch failures instead of the misleading "Log file incomplete" (#21). Distinguish "no log produced" (launch failure) from "log truncated" (killed mid-run).
 - `stacy install --format stata` (and `--format json`) no longer emits a success-shaped block when checksum verification fails (#38). Status is now computed before output, so wrappers see `global stacy_status "error"` plus `global stacy_error "<msg>"` (and JSON gets matching `status`/`error`/`failed` fields) instead of a stale success preceding the non-zero exit.
 - Stata wrappers failed with `command _stacy_check_version is unrecognized` because the generated `_stacy_compat.ado` defined programs that didn't match its filename and wasn't listed in `stacy.pkg` (#37). Split into one file per program.
 - Parallel `stacy run` invocations on scripts that share a basename no longer collide on the log file (#20). Each run writes to a uniquely-named log in the working directory (`<stem>_<pid>_<nanos>_<n>.log`), so build orchestrators like Make `-j` and Snakemake can run same-stemmed scripts from a shared cwd safely. The path is reported in JSON output's `log_file` field.
