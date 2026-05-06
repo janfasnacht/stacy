@@ -1,24 +1,31 @@
 name: Update Homebrew Formula
 
+# Triggered explicitly from release.yml after the GitHub release is created.
+# We do NOT use `on: release: types: [published]` because GITHUB_TOKEN-created
+# releases don't trigger downstream workflows (anti-loop protection), so the
+# chain was silently broken from v1.1.0 onward.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.2.1)'
+        required: true
+        type: string
 
 jobs:
   update-formula:
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for release assets
-        run: sleep 60  # Give release workflow time to upload artifacts
-
       - name: Get release info
         id: release
         run: |
-          echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+          tag="${{ inputs.tag }}"
+          echo "tag=${tag}" >> $GITHUB_OUTPUT
+          echo "version=${tag#v}" >> $GITHUB_OUTPUT
 
       - name: Download checksums
         run: |
-          curl -sL "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/checksums.txt" -o checksums.txt
+          curl -fsSL "https://github.com/${{ github.repository }}/releases/download/${{ steps.release.outputs.tag }}/checksums.txt" -o checksums.txt
           cat checksums.txt
 
       - name: Parse checksums
@@ -77,5 +84,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/stacy.rb
-          git commit -m "Update stacy to ${{ github.ref_name }}"
+          git commit -m "Update stacy to ${{ steps.release.outputs.tag }}"
           git push

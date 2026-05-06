@@ -469,8 +469,6 @@ mod tests {
     fn test_stderr_is_captured_and_capped() {
         // Stand-in for Stata: a shell script that floods stderr (well above
         // the 8 KiB cap) so we can verify both capture and bounds in one go.
-        // Use write_executable (open with mode 0o755 + fsync) to avoid the
-        // ETXTBSY race that Linux can briefly hit after write+chmod+exec.
         let temp = tempfile::TempDir::new().unwrap();
         let script = temp.path().join("flood.sh");
         // 1024 lines of 63 'A's + newline = ~64 KiB.
@@ -479,10 +477,29 @@ mod tests {
                     i=$((i+1)); \
                     done\nexit 1\n";
         write_executable(&script, body);
+        let script_str = script.to_str().unwrap();
+        let log_file = temp.path().join("dummy.log");
 
-        let options =
-            RunOptions::new(script.to_str().unwrap()).with_log_file(temp.path().join("dummy.log"));
-        let result = run_stata(Path::new("anything.do"), options).expect("spawn");
+        // Linux can briefly return ETXTBSY ("Text file busy") even after
+        // write+fsync+drop on the freshly written executable, because cargo's
+        // parallel test runner can have other writable fds in flight on
+        // unrelated files when the kernel checks exec preconditions. Retry a
+        // few times with backoff before failing.
+        let result = (0..3)
+            .find_map(|attempt| {
+                let options = RunOptions::new(script_str).with_log_file(log_file.clone());
+                match run_stata(Path::new("anything.do"), options) {
+                    Ok(r) => Some(r),
+                    Err(crate::error::Error::Io(e))
+                        if e.kind() == std::io::ErrorKind::ExecutableFileBusy =>
+                    {
+                        std::thread::sleep(std::time::Duration::from_millis(50 * (attempt + 1)));
+                        None
+                    }
+                    Err(e) => panic!("spawn: {e:?}"),
+                }
+            })
+            .expect("spawn after ETXTBSY retries");
 
         assert!(!result.stderr.is_empty(), "stderr should be captured");
         assert!(
