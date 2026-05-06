@@ -10,9 +10,15 @@
 use crate::error::Result;
 use crate::packages::global_cache;
 use crate::packages::lockfile::load_lockfile;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 use std::time::{Duration, Instant};
+
+/// Cap on captured stderr bytes. Stata's startup-failure messages (license
+/// seat exhausted, init errors) are tiny; this just stops a misbehaving binary
+/// from ballooning memory.
+const STDERR_CAPTURE_LIMIT: usize = 8 * 1024;
 
 /// Result of running a Stata script
 #[derive(Debug)]
@@ -23,8 +29,18 @@ pub struct RunResult {
     pub log_file: PathBuf,
     /// How long the script took to run
     pub duration: Duration,
-    /// Whether the process completed normally (not killed)
+    /// Whether the process exited cleanly with code 0.
     pub completed: bool,
+    /// True when the process was killed by a signal (SIGTERM/SIGINT/SIGKILL),
+    /// e.g. by stacy's watchdog on timeout. Distinct from `!completed`, which
+    /// also covers a clean non-zero exit (a launch failure where Stata never
+    /// produced a log).
+    pub signaled: bool,
+    /// Captured stderr from the Stata process, lossy-decoded and capped at
+    /// `STDERR_CAPTURE_LIMIT` bytes. Empty on a normal Stata run; carries the
+    /// real diagnostic when Stata fails to start (license seat exhausted,
+    /// missing binary, init error).
+    pub stderr: String,
 }
 
 /// Options for running Stata
@@ -138,9 +154,12 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
     cmd.args(["-b", "-q", "do"]);
     cmd.arg(script);
 
-    // Suppress Stata's output to stdout/stderr (we read logs instead)
+    // Stata writes results to the log file, so stdout is uninteresting.
+    // stderr is normally empty, but carries real diagnostics on startup
+    // failures (license seat exhausted, init errors) — capture it so the
+    // user isn't left with a generic "Log file incomplete" message.
     cmd.stdout(Stdio::null());
-    cmd.stderr(Stdio::null());
+    cmd.stderr(Stdio::piped());
 
     // Set working directory if specified
     if let Some(dir) = options.working_dir {
@@ -190,6 +209,30 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
     // Spawn process
     let mut child = cmd.spawn()?;
 
+    // Drain stderr on a background thread so the kernel pipe buffer can't
+    // deadlock the child if it writes more than ~64 KiB. The reader caps the
+    // captured bytes at STDERR_CAPTURE_LIMIT.
+    let stderr_handle = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || -> Vec<u8> {
+            let mut buf = Vec::with_capacity(512);
+            let mut chunk = [0u8; 1024];
+            loop {
+                match pipe.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if buf.len() < STDERR_CAPTURE_LIMIT {
+                            let take = (STDERR_CAPTURE_LIMIT - buf.len()).min(n);
+                            buf.extend_from_slice(&chunk[..take]);
+                        }
+                        // Keep draining past the cap so the child doesn't block.
+                    }
+                    Err(_) => break,
+                }
+            }
+            buf
+        })
+    });
+
     // Wait for completion (with optional timeout)
     let exit_status = if let Some(timeout) = options.timeout {
         wait_with_timeout(&mut child, timeout)?
@@ -198,6 +241,12 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
     };
 
     let duration = start.elapsed();
+
+    // Collect captured stderr after the child has exited.
+    let stderr = stderr_handle
+        .and_then(|h| h.join().ok())
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+        .unwrap_or_default();
 
     // Determine log file path. Callers that want collision-safe parallel runs
     // pass a precomputed path via `with_log_file` (see `executor::run_paths`).
@@ -220,11 +269,18 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
     // Check if process completed normally
     let completed = exit_status.success() || exit_code == 0;
 
+    // Was the process killed by a signal? On Unix this is the only way to
+    // distinguish stacy's own watchdog (or an external SIGKILL) from a
+    // binary that simply exited non-zero (a launch failure with no log).
+    let signaled = signaled_from_status(&exit_status);
+
     Ok(RunResult {
         exit_code,
         log_file,
         duration,
         completed,
+        signaled,
+        stderr,
     })
 }
 
@@ -265,6 +321,21 @@ fn wait_with_timeout(child: &mut std::process::Child, timeout: Duration) -> Resu
     let _ = watchdog.join(); // Wait for clean thread shutdown
 
     Ok(status)
+}
+
+/// True iff the process was terminated by a signal (Unix). Always false on
+/// non-Unix platforms (Windows has no equivalent concept).
+fn signaled_from_status(status: &ExitStatus) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        status.signal().is_some()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = status;
+        false
+    }
 }
 
 /// Extract exit code from ExitStatus
@@ -391,6 +462,51 @@ mod tests {
         let options = RunOptions::new("stata-mp").with_local_ado_paths(paths.clone());
 
         assert_eq!(options.local_ado_paths, paths);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_stderr_is_captured_and_capped() {
+        // Stand-in for Stata: a shell script that floods stderr (well above
+        // the 8 KiB cap) so we can verify both capture and bounds in one go.
+        // Use write_executable (open with mode 0o755 + fsync) to avoid the
+        // ETXTBSY race that Linux can briefly hit after write+chmod+exec.
+        let temp = tempfile::TempDir::new().unwrap();
+        let script = temp.path().join("flood.sh");
+        // 1024 lines of 63 'A's + newline = ~64 KiB.
+        let body = "#!/bin/sh\ni=0\nwhile [ $i -lt 1024 ]; do \
+                    echo AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA >&2; \
+                    i=$((i+1)); \
+                    done\nexit 1\n";
+        write_executable(&script, body);
+
+        let options =
+            RunOptions::new(script.to_str().unwrap()).with_log_file(temp.path().join("dummy.log"));
+        let result = run_stata(Path::new("anything.do"), options).expect("spawn");
+
+        assert!(!result.stderr.is_empty(), "stderr should be captured");
+        assert!(
+            result.stderr.len() <= super::STDERR_CAPTURE_LIMIT,
+            "stderr should be capped at {} bytes, got {}",
+            super::STDERR_CAPTURE_LIMIT,
+            result.stderr.len()
+        );
+    }
+
+    #[cfg(unix)]
+    fn write_executable(path: &Path, body: &str) {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o755)
+            .open(path)
+            .unwrap();
+        f.write_all(body.as_bytes()).unwrap();
+        f.sync_all().unwrap();
+        // f drops here, releasing the fd before any exec.
     }
 
     #[test]
