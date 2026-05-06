@@ -570,10 +570,15 @@ pub struct InstallOutput {
     pub package_count: usize,
     /// Number skipped (errors)
     pub skipped: i32,
+    /// Number that failed checksum verification
+    pub failed: i32,
     /// Total packages processed
     pub total: i32,
     /// 'success' or 'error'
     pub status: String,
+    /// Error summary (present iff status == "error")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 impl CommandOutput for InstallOutput {
@@ -591,11 +596,15 @@ impl CommandOutput for InstallOutput {
             self.already_installed as i64,
         ));
         lines.push(format_stata_scalar_int("skipped", self.skipped as i64));
+        lines.push(format_stata_scalar_int("failed", self.failed as i64));
         lines.push(format_stata_scalar_int("total", self.total as i64));
         lines.push(format_stata_scalar_usize(
             "package_count",
             self.package_count,
         ));
+        if let Some(msg) = &self.error {
+            lines.push(format_stata_local("error", msg));
+        }
         lines.join("\n")
     }
 }
@@ -1237,8 +1246,10 @@ mod tests {
             installed: 3,
             already_installed: 2,
             skipped: 1,
+            failed: 0,
             total: 6,
             package_count: 6,
+            error: None,
         };
 
         let stata = output.to_stata();
@@ -1246,6 +1257,29 @@ mod tests {
         assert!(stata.contains("scalar stacy_installed = 3"));
         assert!(stata.contains("scalar stacy_already_installed = 2"));
         assert!(stata.contains("scalar stacy_skipped = 1"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(!stata.contains("stacy_error"));
+    }
+
+    #[test]
+    fn test_install_output_to_stata_error() {
+        let output = InstallOutput {
+            status: "error".to_string(),
+            installed: 0,
+            already_installed: 4,
+            skipped: 0,
+            failed: 2,
+            total: 4,
+            package_count: 4,
+            error: Some("2 package(s) failed checksum verification: ftools, reghdfe".to_string()),
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"error\""));
+        assert!(stata.contains("scalar stacy_failed = 2"));
+        assert!(stata.contains(
+            "global stacy_error \"2 package(s) failed checksum verification: ftools, reghdfe\""
+        ));
     }
 
     #[test]
@@ -1981,8 +2015,10 @@ mod tests {
                     installed: 3,
                     already_installed: 1,
                     skipped: 0,
+                    failed: 0,
                     total: 4,
                     package_count: 4,
+                    error: None,
                 }
                 .to_stata(),
             ),

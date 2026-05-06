@@ -147,6 +147,85 @@ fn test_poisoned_cache_fails_install() {
         .stderr(predicate::str::contains("checksum"));
 }
 
+/// Issue #38 regression: poisoned cache must NOT emit success-shaped Stata
+/// output. Wrappers branch on `$stacy_status`, so a stale "success" before a
+/// non-zero exit would silently degrade reproducibility.
+#[test]
+fn test_poisoned_cache_emits_stata_error_output() {
+    let (project, cache, _checksum) = create_test_project_with_cache();
+    poison_cache(cache.path(), "testpkg", "1.0.0");
+
+    let assert = stacy()
+        .arg("install")
+        .arg("--frozen")
+        .arg("--format")
+        .arg("stata")
+        .current_dir(project.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("LOCALAPPDATA", cache.path())
+        .assert()
+        .failure();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("global stacy_status \"error\""),
+        "expected stacy_status=error in stdout, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("global stacy_error"),
+        "expected stacy_error global in stdout, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("scalar stacy_failed = 1"),
+        "expected scalar stacy_failed=1 in stdout, got: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("global stacy_status \"success\""),
+        "stdout must not announce success on a failed install: {}",
+        stdout
+    );
+}
+
+/// Issue #38 regression: same fix in the JSON output path. The hard-coded
+/// "status": "success" is replaced with the real status, and the summary
+/// carries the error message and failed-count for downstream consumers.
+#[test]
+fn test_poisoned_cache_emits_json_error_output() {
+    let (project, cache, _checksum) = create_test_project_with_cache();
+    poison_cache(cache.path(), "testpkg", "1.0.0");
+
+    let assert = stacy()
+        .arg("install")
+        .arg("--frozen")
+        .arg("--format")
+        .arg("json")
+        .current_dir(project.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("LOCALAPPDATA", cache.path())
+        .assert()
+        .failure();
+
+    let stdout = String::from_utf8_lossy(&assert.get_output().stdout);
+    assert!(
+        stdout.contains("\"status\": \"error\""),
+        "expected status=error in JSON, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("\"failed\": 1"),
+        "expected failed=1 in JSON summary, got: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("checksum verification"),
+        "expected error message about checksum verification, got: {}",
+        stdout
+    );
+}
+
 /// Behavior preservation: --no-verify skips checksum on tampered cache.
 ///
 /// Even with a poisoned cache, `--no-verify` should allow install to succeed
