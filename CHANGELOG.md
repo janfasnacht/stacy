@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-05-06
+
 ### Added
 
 - Stata wrappers now verify that the `stacy` binary they invoke is version-compatible (#35). On mismatch, `_stacy_exec` aborts with a clear error and a `stacy_setup, force` hint instead of silently running against a stale binary. The check shells out once per Stata session (cached in `$stacy_version_checked`).

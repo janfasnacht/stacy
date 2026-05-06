@@ -1,6 +1,6 @@
 *! _stacy_check_version.ado - Wrapper/binary version compatibility check
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.2.0
+*! Version: 1.2.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
@@ -13,7 +13,7 @@ program define _stacy_check_version, rclass
         exit 0
     }
 
-    local expected "1.2.0"
+    local expected "1.2.1"
 
     * Capture `<binary> --version` output.
     tempfile ver_out

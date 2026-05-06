@@ -1,7 +1,7 @@
 # stacy - Reproducible Stata Workflow Tool
 # Common development tasks
 
-.PHONY: build test clean lint fmt check release help
+.PHONY: build test clean lint fmt fmt-check codegen-check check release help
 
 # Default target
 help:
@@ -12,7 +12,7 @@ help:
 	@echo "  make test       - Run all tests"
 	@echo "  make lint       - Run clippy lints"
 	@echo "  make fmt        - Format code"
-	@echo "  make check      - Run all checks (fmt, lint, test)"
+	@echo "  make check      - Run all checks (fmt, codegen, lint, test)"
 	@echo "  make clean      - Remove build artifacts and logs"
 	@echo "  make clean-logs - Remove .log files only"
 	@echo ""
@@ -41,8 +41,11 @@ fmt:
 fmt-check:
 	cargo fmt --all -- --check
 
-# Run all checks (what CI runs)
-check: fmt-check lint test
+codegen-check:
+	cargo xtask codegen --check
+
+# Run all checks (what CI runs and what the release checklist requires)
+check: fmt-check codegen-check lint test
 	@echo "All checks passed!"
 
 # Cleanup
