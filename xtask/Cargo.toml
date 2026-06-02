@@ -27,4 +27,4 @@ walkdir = "2.4"
 minijinja = "2.20"
 
 # Diff for verification
-similar = "2.4"
+similar = "3.1"
