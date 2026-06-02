@@ -50,7 +50,7 @@ regex = "1.12"
 lazy_static = "1.4"
 
 # Terminal output
-colored = "2.1"
+colored = "3.1"
 
 # File system operations
 walkdir = "2.4"
