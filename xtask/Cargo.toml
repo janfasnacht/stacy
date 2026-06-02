@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # CLI
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 
 # Configuration parsing
 toml = "0.8"
@@ -24,7 +24,7 @@ anyhow = "1.0"
 walkdir = "2.4"
 
 # Template rendering
-minijinja = "2.19"
+minijinja = "2.20"
 
 # Diff for verification
 similar = "2.4"
