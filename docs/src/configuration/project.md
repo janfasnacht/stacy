@@ -113,14 +113,14 @@ clean = "src/01_clean.do"
 analyze = "src/02_analyze.do"
 tables = "src/03_tables.do"
 
-# Sequential: an array runs other *tasks* in order (task names, not paths)
-build = ["clean", "analyze", "tables"]
+# Sequential: an array runs tasks (or script paths) in order
+build = ["clean", "analyze", "src/03_tables.do"]
 
-# Parallel: run other tasks concurrently
+# Parallel: run tasks (or script paths) concurrently
 outputs = { parallel = ["analyze", "tables"] }
 ```
 
-Array entries and `parallel` lists must be names of other tasks; to run a script, give it a name first. The object form also supports `script`, `args`, and `description` keys:
+Array entries and `parallel` lists may name other tasks or point directly at script paths. The object form also supports `script`, `args`, and `description` keys:
 
 ```toml
 analyze = { script = "src/02_analyze.do", description = "Main estimates" }
