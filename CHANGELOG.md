@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-09
+
 ### Changed
 
 - `stacy run` streams program output to stdout live in piped mode, matching `Rscript`/`python`, instead of printing it after execution (#24). Output content is unchanged (boilerplate-stripped); stacy's status and error messages stay on stderr. Note: on failure, partial output now appears on stdout before the failure is reported.

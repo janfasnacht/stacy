@@ -1,6 +1,6 @@
 *! stacy_remove.ado - Remove packages from project
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.2.1
+*! Version: 1.3.0
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
