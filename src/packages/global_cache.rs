@@ -369,8 +369,49 @@ pub fn clean_unused_packages(lockfiles: &[&Lockfile]) -> Result<usize> {
     Ok(removed)
 }
 
+/// Combined checksum of every file in an installed package directory.
+///
+/// This is the same quantity `stacy add` records at download time: per-file
+/// SHA256s combined order-independently. Returns None if the directory can't
+/// be read or contains no files.
+pub fn hash_package_dir(dir: &std::path::Path) -> Option<String> {
+    use crate::packages::ssc::{calculate_combined_checksum, calculate_sha256};
+
+    let mut checksums = Vec::new();
+    for entry in std::fs::read_dir(dir).ok()? {
+        let entry = entry.ok()?;
+        if entry.path().is_file() {
+            let content = std::fs::read(entry.path()).ok()?;
+            checksums.push(calculate_sha256(&content));
+        }
+    }
+    if checksums.is_empty() {
+        return None;
+    }
+    Some(calculate_combined_checksum(&checksums))
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_hash_package_dir_matches_download_checksum() {
+        use crate::packages::ssc::{calculate_combined_checksum, calculate_sha256};
+        let dir = tempfile::TempDir::new().unwrap();
+        std::fs::write(dir.path().join("pkg.ado"), b"program define pkg\nend\n").unwrap();
+        std::fs::write(dir.path().join("pkg.sthlp"), b"help text\n").unwrap();
+
+        // What `stacy add` records: per-file hashes, combined
+        let expected = calculate_combined_checksum(&[
+            calculate_sha256(b"program define pkg\nend\n"),
+            calculate_sha256(b"help text\n"),
+        ]);
+        assert_eq!(hash_package_dir(dir.path()), Some(expected));
+
+        // Empty dir -> None
+        let empty = tempfile::TempDir::new().unwrap();
+        assert_eq!(hash_package_dir(empty.path()), None);
+    }
+
     use super::*;
     use serial_test::serial;
     use std::collections::HashMap;

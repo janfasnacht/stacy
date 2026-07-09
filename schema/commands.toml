@@ -644,6 +644,7 @@ see_also = ["install", "update", "../configuration/lockfile.md"]
 
 [commands.lock.args]
 check = { type = "bool", description = "Verify lockfile matches stacy.toml without updating", stata_option = "CHECK" }
+refresh = { type = "bool", description = "Recompute checksums from the packages installed in the global cache", stata_option = "REFRESH" }
 json = { type = "bool", description = "JSON output (internal)" }
 
 [commands.lock.returns]

@@ -171,9 +171,12 @@ pub fn parse_pkg_file(content: &str, package_name: &str) -> Result<PackageManife
                 }
             }
             'f' | 'F' => {
-                // File line
+                // File line. Some manifests list the same file twice (e.g.
+                // reghdfe); dedupe here so download, install, and checksum
+                // all see one entry per file — verification hashes the
+                // unique files on disk (#68).
                 let filename = line[1..].trim();
-                if !filename.is_empty() {
+                if !filename.is_empty() && !files.iter().any(|f: &PackageFile| f.name == filename) {
                     let file_type = filename
                         .rsplit('.')
                         .next()
@@ -243,6 +246,23 @@ pub fn parse_pkg_file(content: &str, package_name: &str) -> Result<PackageManife
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_duplicate_file_entries_deduped() {
+        // reghdfe's manifest lists some files twice (#68)
+        let pkg = "d 'REGHDFE': module to run linear models\n\
+f reghdfe.ado\n\
+f reghdfe5_parse.ado\n\
+f reghdfe.mata\n\
+f reghdfe5_parse.ado\n\
+f reghdfe.mata\n";
+        let manifest = parse_pkg_file(pkg, "reghdfe").unwrap();
+        let names: Vec<_> = manifest.files.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["reghdfe.ado", "reghdfe5_parse.ado", "reghdfe.mata"]
+        );
+    }
+
     use super::*;
 
     #[test]

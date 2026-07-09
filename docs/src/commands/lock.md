@@ -19,6 +19,7 @@ to verify the lockfile is up-to-date.
 | Option | Description |
 |--------|-------------|
 | `--check` | Verify lockfile matches stacy.toml without updating |
+| `--refresh` | Recompute checksums from the packages installed in the global cache |
 
 ## Examples
 

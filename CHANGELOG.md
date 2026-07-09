@@ -7,15 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `stacy lock --refresh`: recompute lockfile checksums from the installed cache.
+
+### Fixed
+
+- Packages whose `.pkg` manifest lists a file twice (e.g. reghdfe) no longer fail checksum verification (#68). Run `stacy lock --refresh` to repair lockfile entries recorded by older versions.
+
 ## [1.3.0] - 2026-07-09
 
 ### Changed
 
-- `stacy run` streams program output to stdout live in piped mode, matching `Rscript`/`python`, instead of printing it after execution (#24). Output content is unchanged (boilerplate-stripped); stacy's status and error messages stay on stderr. Note: on failure, partial output now appears on stdout before the failure is reported.
-- The batch log file is now internal: removed on success, kept on failure (path shown in the failure output). Machine-readable formats (`--format json|stata`) keep the log since their output references it. Use `--log <path>` for a durable log artifact.
-- `--parallel` prints each script's output as a grouped block on completion (`==> script.do <==` headers on stdout, status lines on stderr) instead of discarding it.
-- Raw `-v` streaming runs to process exit instead of stopping a few lines after the end-of-do-file marker.
-- `stacy task` output streams live as well (tasks run with the same piped-mode default).
+- `stacy run` streams program output to stdout live in piped mode, like `Rscript` (#24). Same content as before, just live; status and errors stay on stderr. `stacy task` streams too.
+- The log file is now internal: removed on success, kept on failure. Machine-readable formats keep it. Use `--log <path>` for a durable artifact.
+- `--parallel` prints each script's output as a grouped block on completion instead of discarding it.
 
 ### Added
 
@@ -27,13 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Sequential/parallel task arrays now accept script paths (`all = ["clean", "src/02_analyze.do"]`), as the docs showed (#64). Defined task names take precedence.
-- Post-install dependency hints now comma-separate package names (`appears to need ftools, require`) instead of running them together (#63).
-- Failure context no longer loads the entire log into memory to number its last 20 lines (#66).
-- Log streaming (`-v`, `-vv`, TTY default) no longer hangs forever when Stata is killed (`--timeout` watchdog, external SIGKILL) or fails to launch without creating a log (#24).
-- `stacy run foo.do | head` no longer panics when the downstream pipe closes.
-- Log streaming now recovers from a truncated/recreated log file and no longer emits partially-written lines.
-- `--trace` no longer leaks its temporary traced script and log file on exit.
+- Task arrays accept script paths: `all = ["clean", "src/02_analyze.do"]` (#64).
+- Post-install hints comma-separate package names (#63).
+- Failure context no longer loads the entire log into memory (#66).
+- Log streaming no longer hangs when Stata is killed or fails to launch, recovers from truncated logs, and survives closed pipes (`| head`).
+- `--trace` no longer leaks its temp script and log.
 
 ## [1.2.1] - 2026-05-06
 
