@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `stacy run --log <path>`: write the raw Stata log to a chosen path (works with `--quiet` for silent file-artifact mode).
 
+### Removed
+
+- Dead `log_reader::is_successful_completion` (unused since the streaming rework, #65).
+
 ### Fixed
 
 - Log streaming (`-v`, `-vv`, TTY default) no longer hangs forever when Stata is killed (`--timeout` watchdog, external SIGKILL) or fails to launch without creating a log (#24).
