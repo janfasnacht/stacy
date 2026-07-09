@@ -19,11 +19,17 @@ use clap::Args;
 #[command(after_help = "\
 Examples:
   stacy lock                              Generate/update lockfile
-  stacy lock --check                      Verify lockfile is in sync")]
+  stacy lock --check                      Verify lockfile is in sync
+  stacy lock --refresh                    Recompute checksums from installed packages")]
 pub struct LockArgs {
     /// Verify lockfile matches stacy.toml without updating (exit 1 if out of sync)
-    #[arg(long)]
+    #[arg(long, conflicts_with = "refresh")]
     pub check: bool,
+
+    /// Recompute checksums from the packages installed in the global cache
+    /// (repairs entries recorded by older stacy versions, see #68)
+    #[arg(long)]
+    pub refresh: bool,
 
     /// Output format: human (default), json, or stata
     #[arg(long, value_enum, default_value = "human")]
@@ -264,6 +270,34 @@ pub fn execute(args: &LockArgs) -> Result<()> {
         }
     }
 
+    // Refresh mode: recompute checksums from the global cache so the
+    // lockfile matches what `stacy install` verifies against. Repairs
+    // entries recorded before duplicate manifest entries were deduped (#68).
+    let mut refreshed_count = 0;
+    if args.refresh {
+        for (name, entry) in lockfile.packages.iter_mut() {
+            let Ok(cache_dir) = crate::packages::global_cache::package_path(name, &entry.version)
+            else {
+                continue;
+            };
+            let Some(actual) = crate::packages::global_cache::hash_package_dir(&cache_dir) else {
+                if format == OutputFormat::Human {
+                    eprintln!("  Warning: {} not in cache, checksum left unchanged", name);
+                }
+                continue;
+            };
+            let new_checksum = format!("sha256:{}", actual);
+            if entry.checksum.as_deref() != Some(new_checksum.as_str()) {
+                entry.checksum = Some(new_checksum);
+                updated = true;
+                refreshed_count += 1;
+                if format == OutputFormat::Human {
+                    println!("  ~ {} (checksum recomputed)", name);
+                }
+            }
+        }
+    }
+
     // Save lockfile if updated
     if updated {
         save_lockfile(&project.root, &lockfile)?;
@@ -288,6 +322,9 @@ pub fn execute(args: &LockArgs) -> Result<()> {
                 }
                 if removed_count > 0 {
                     summary.push(format!("{} removed", removed_count));
+                }
+                if refreshed_count > 0 {
+                    summary.push(format!("{} checksum(s) recomputed", refreshed_count));
                 }
                 println!(
                     "Updated stacy.lock: {} ({} total packages)",

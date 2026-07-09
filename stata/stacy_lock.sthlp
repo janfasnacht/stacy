@@ -22,6 +22,7 @@
 {synoptline}
 {syntab:Main}
 {synopt:{opt:check}}Verify lockfile matches stacy.toml without updating{p_end}
+{synopt:{opt:refresh}}Recompute checksums from the packages installed in the global cache{p_end}
 {synoptline}
 
 
@@ -37,6 +38,9 @@
 
 {phang}
 {opt check} verify lockfile matches stacy.toml without updating.
+
+{phang}
+{opt refresh} recompute checksums from the packages installed in the global cache.
 
 
 {marker returns}{...}

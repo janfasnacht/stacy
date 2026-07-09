@@ -8,7 +8,6 @@ use crate::error::{Error, Result};
 use crate::packages::global_cache;
 use crate::packages::installer::{install_package, install_package_github, is_package_installed};
 use crate::packages::lockfile::{check_version_mismatch, load_lockfile, verify_lockfile_sync};
-use crate::packages::ssc::{calculate_combined_checksum, calculate_sha256};
 use crate::project::config::load_config;
 use crate::project::{PackageSource, Project};
 use clap::Args;
@@ -446,23 +445,8 @@ fn verify_package_checksum(name: &str, entry: &crate::project::PackageEntry) -> 
         return Some(false);
     }
 
-    // Collect SHA256 of every file in cache dir
-    let mut checksums = Vec::new();
-    let entries = std::fs::read_dir(&cache_dir).ok()?;
-    for dir_entry in entries {
-        let dir_entry = dir_entry.ok()?;
-        if dir_entry.path().is_file() {
-            let content = std::fs::read(dir_entry.path()).ok()?;
-            checksums.push(calculate_sha256(&content));
-        }
-    }
-
-    if checksums.is_empty() {
-        return Some(false);
-    }
-
-    // calculate_combined_checksum sorts internally (H2 fix)
-    let actual = calculate_combined_checksum(&checksums);
+    // Same hash `stacy add` records at download time
+    let actual = global_cache::hash_package_dir(&cache_dir)?;
     Some(actual == expected)
 }
 
@@ -581,6 +565,7 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packages::ssc::{calculate_combined_checksum, calculate_sha256};
     use serial_test::serial;
     use tempfile::TempDir;
 

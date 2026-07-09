@@ -12,6 +12,7 @@
 
     Options:
         CHECK                - Verify lockfile matches stacy.toml without updating
+        REFRESH              - Recompute checksums from the packages installed in the global cache
 
     Returns:
         r(in_sync             ) - Whether lockfile is in sync (1=yes, 0=no) (scalar)
@@ -22,13 +23,17 @@
 
 program define stacy_lock, rclass
     version 14.0
-    syntax [, CHECK]
+    syntax [, CHECK REFRESH]
 
     * Build command arguments
     local cmd "lock"
 
     if "`check'" != "" {
         local cmd `"`cmd' --check"'
+    }
+
+    if "`refresh'" != "" {
+        local cmd `"`cmd' --refresh"'
     }
 
     * Execute via _stacy_exec
