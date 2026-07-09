@@ -80,21 +80,42 @@ pub fn read_full_log(log_file: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// Count lines without loading the file into memory.
+///
+/// Matches `str::lines` semantics: a trailing line without a final newline
+/// still counts.
+fn count_lines(path: &Path) -> Result<usize> {
+    use std::io::Read;
+    let mut reader = BufReader::new(File::open(path)?);
+    let mut buf = [0u8; 64 * 1024];
+    let mut count = 0usize;
+    let mut last_byte = b'\n';
+    loop {
+        let n = reader.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        count += buf[..n].iter().filter(|&&b| b == b'\n').count();
+        last_byte = buf[n - 1];
+    }
+    if last_byte != b'\n' {
+        count += 1;
+    }
+    Ok(count)
+}
+
 /// Get error context from log file (last 20 lines, formatted)
 ///
 /// Used for default verbosity mode - shows context when error occurs.
 ///
 /// Returns formatted string with actual line numbers from log file.
 pub fn get_error_context(log_file: &Path) -> Result<String> {
-    // Read entire file to get accurate line numbers
-    let bytes = std::fs::read(log_file)?;
-    let content = String::from_utf8_lossy(&bytes).into_owned();
-    let all_lines: Vec<&str> = content.lines().collect();
-    let total_lines = all_lines.len();
+    // Count lines in fixed-size chunks — long runs can produce logs too
+    // large to load for numbering alone.
+    let total_lines = count_lines(log_file)?;
 
-    // Get last 20 lines
-    let start_idx = total_lines.saturating_sub(20);
-    let last_lines = &all_lines[start_idx..];
+    let last_lines = read_last_lines(log_file, 20)?;
+    let start_idx = total_lines.saturating_sub(last_lines.len());
 
     let mut output = String::new();
     output.push('\n');
@@ -104,6 +125,7 @@ pub fn get_error_context(log_file: &Path) -> Result<String> {
 
     // Show actual line numbers from file
     for (i, line) in last_lines.iter().enumerate() {
+        let line = line.as_str();
         let line_num = start_idx + i + 1; // +1 for 1-indexed
 
         // Highlight lines with r() codes
@@ -777,6 +799,41 @@ end of do-file\n";
         let content = read_full_log(temp.path())?;
         assert!(content.contains("end of do-file"));
         assert!(content.contains("variable label:"));
+        Ok(())
+    }
+
+    #[test]
+    fn test_count_lines() -> Result<()> {
+        let mut temp = NamedTempFile::new()?;
+        write!(temp, "a\nb\nc\n")?;
+        temp.flush()?;
+        assert_eq!(count_lines(temp.path())?, 3);
+
+        // No trailing newline: partial last line still counts
+        let mut temp2 = NamedTempFile::new()?;
+        write!(temp2, "a\nb\nc")?;
+        temp2.flush()?;
+        assert_eq!(count_lines(temp2.path())?, 3);
+
+        let temp3 = NamedTempFile::new()?;
+        assert_eq!(count_lines(temp3.path())?, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_error_context_line_numbers() -> Result<()> {
+        let mut temp = NamedTempFile::new()?;
+        for i in 1..=30 {
+            writeln!(temp, "line number {}", i)?;
+        }
+        writeln!(temp, "r(601);")?;
+        temp.flush()?;
+
+        let context = get_error_context(temp.path())?;
+        // 31 lines total; window is the last 20 → lines 12..=31
+        assert!(context.contains(" 12 │ line number 12"));
+        assert!(context.contains(" 31 → r(601);"));
+        assert!(!context.contains("line number 11\n"));
         Ok(())
     }
 

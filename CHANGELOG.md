@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Post-install dependency hints now comma-separate package names (`appears to need ftools, require`) instead of running them together (#63).
+- Failure context no longer loads the entire log into memory to number its last 20 lines (#66).
 - Log streaming (`-v`, `-vv`, TTY default) no longer hangs forever when Stata is killed (`--timeout` watchdog, external SIGKILL) or fails to launch without creating a log (#24).
 - `stacy run foo.do | head` no longer panics when the downstream pipe closes.
 - Log streaming now recovers from a truncated/recreated log file and no longer emits partially-written lines.
