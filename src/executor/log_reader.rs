@@ -162,150 +162,185 @@ pub fn get_error_context(log_file: &Path) -> Result<String> {
     Ok(output)
 }
 
-/// Stream log file to stdout in real-time
-///
-/// Used for `-v` and `-vv` verbosity modes.
-///
-/// Tails the log file while Stata is running, printing new lines as they appear.
-///
-/// # Arguments
-///
-/// * `log_file` - Path to log file to stream
-/// * `poll_interval` - How often to check for new lines (milliseconds)
-///
-/// # Returns
-///
-/// Returns when log file shows "end of do-file" marker or file is deleted
-pub fn stream_log_file(log_file: &Path, poll_interval: std::time::Duration) -> Result<()> {
-    use std::io::{BufRead, BufReader, Seek, SeekFrom};
-    use std::thread::sleep;
-
-    // Wait for log file to be created
-    while !log_file.exists() {
-        sleep(poll_interval);
-    }
-
-    let mut file = File::open(log_file)?;
-    let mut reader = BufReader::new(file);
-    let mut position = 0u64;
-
-    loop {
-        // Read new lines
-        reader.seek(SeekFrom::Start(position))?;
-
-        let mut buffer = String::new();
-        let bytes_read = reader.read_line(&mut buffer)?;
-
-        if bytes_read > 0 {
-            print!("{}", buffer);
-            position += bytes_read as u64;
-
-            // Check if we've reached end of do-file
-            if buffer.trim() == "end of do-file" {
-                // Read a few more lines to get r() code if present
-                for _ in 0..3 {
-                    sleep(poll_interval);
-                    buffer.clear();
-                    let bytes = reader.read_line(&mut buffer)?;
-                    if bytes > 0 {
-                        print!("{}", buffer);
-                        let _ = position + bytes as u64; // Track position but don't update since we break
-                    }
-                }
-                break;
-            }
-        } else {
-            // No new data, check if file still exists
-            if !log_file.exists() {
-                break;
-            }
-
-            // Wait before polling again
-            sleep(poll_interval);
-
-            // Reopen file in case it was truncated/recreated
-            file = File::open(log_file)?;
-            reader = BufReader::new(file);
-        }
-    }
-
-    Ok(())
+/// What the streamer emits for each log line
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StreamMode {
+    /// Every line as Stata wrote it (`-v`, `-vv`)
+    Raw,
+    /// Boilerplate-stripped: no command echoes, blanks collapsed, output
+    /// stops at the `end of do-file` trailer (TTY default)
+    Clean,
 }
 
-/// Stream clean (boilerplate-stripped) log file to stdout in real-time
+/// Line filter implementing the Clean mode rules. Mirrors `strip_boilerplate`
+/// but works incrementally on a live stream. Blank lines are held back until
+/// the next content line — that both collapses runs of blanks and avoids
+/// emitting a trailing blank before the `end of do-file` trailer (which a
+/// stream, unlike post-hoc stripping, could not retract).
+struct CleanFilter {
+    seen_content: bool,
+    pending_blank: bool,
+    suppress: bool,
+}
+
+enum CleanAction {
+    Skip,
+    Emit,
+    EmitWithLeadingBlank,
+}
+
+impl CleanFilter {
+    fn new() -> Self {
+        Self {
+            seen_content: false,
+            pending_blank: false,
+            suppress: false,
+        }
+    }
+
+    fn process(&mut self, line: &str) -> CleanAction {
+        if self.suppress {
+            return CleanAction::Skip;
+        }
+        let trimmed = line.trim();
+        if trimmed == "end of do-file" {
+            // Trailer reached: suppress it and everything after (r(CODE);).
+            // A script that *prints* this exact line will truncate the clean
+            // stream — same tradeoff strip_boilerplate makes.
+            self.suppress = true;
+            return CleanAction::Skip;
+        }
+        if is_command_echo(trimmed) {
+            return CleanAction::Skip;
+        }
+        if trimmed.is_empty() {
+            // Hold back until we know content follows
+            self.pending_blank = self.seen_content;
+            return CleanAction::Skip;
+        }
+        self.seen_content = true;
+        if self.pending_blank {
+            self.pending_blank = false;
+            CleanAction::EmitWithLeadingBlank
+        } else {
+            CleanAction::Emit
+        }
+    }
+}
+
+/// Stream a Stata log to stdout in real-time while the process runs.
 ///
-/// Used for TTY default mode (DefaultInteractive). Filters out command echoes
-/// and boilerplate, showing only substantive Stata output as it appears.
-pub fn stream_log_file_clean(log_file: &Path, poll_interval: std::time::Duration) -> Result<()> {
+/// Termination is driven by `stop`, which the caller sets once the Stata
+/// process has exited (see `StataExecutor::run_internal`). This is the only
+/// reliable signal: marker strings can be forged by script output, and a
+/// killed Stata never writes one at all. After `stop` is observed, one final
+/// drain pass picks up everything Stata flushed before exiting.
+///
+/// Robustness properties:
+/// - Log never created (launch failure): returns once `stop` is set instead
+///   of spinning forever
+/// - Truncated/recreated log: position resets instead of seeking past EOF
+/// - Partially written lines: held back until the newline arrives so Clean
+///   filtering never sees fragments
+/// - Closed stdout (e.g. piped to `head`): stops emitting, keeps draining,
+///   returns cleanly instead of panicking
+pub fn stream_log(
+    log_file: &Path,
+    poll_interval: std::time::Duration,
+    mode: StreamMode,
+    stop: &std::sync::atomic::AtomicBool,
+) -> Result<()> {
+    let mut stdout = std::io::stdout();
+    stream_log_to(log_file, poll_interval, mode, stop, &mut stdout)
+}
+
+/// Writer-generic core of [`stream_log`] (separated for testability).
+pub fn stream_log_to(
+    log_file: &Path,
+    poll_interval: std::time::Duration,
+    mode: StreamMode,
+    stop: &std::sync::atomic::AtomicBool,
+    out: &mut dyn std::io::Write,
+) -> Result<()> {
     use std::io::{BufRead, BufReader, Seek, SeekFrom};
+    use std::sync::atomic::Ordering;
     use std::thread::sleep;
 
-    // Wait for log file to be created
+    // Wait for the log to appear. If the process exits first, no log is
+    // coming — the caller diagnoses the launch failure from captured stderr.
     while !log_file.exists() {
+        if stop.load(Ordering::Acquire) {
+            return Ok(());
+        }
         sleep(poll_interval);
     }
 
-    let mut file = File::open(log_file)?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::new(File::open(log_file)?);
     let mut position = 0u64;
-    let mut seen_content = false;
-    let mut prev_blank = false;
+    let mut filter = CleanFilter::new();
+    let mut writer_open = true;
+    // Set when `stop` is observed: one more read pass to EOF, then done.
+    let mut final_pass = false;
 
     loop {
-        // Read new lines
         reader.seek(SeekFrom::Start(position))?;
 
         let mut buffer = String::new();
         let bytes_read = reader.read_line(&mut buffer)?;
 
-        if bytes_read > 0 {
+        if bytes_read > 0 && (buffer.ends_with('\n') || final_pass) {
             position += bytes_read as u64;
-            let trimmed = buffer.trim();
 
-            // Stop at end of do-file
-            if trimmed == "end of do-file" {
-                break;
+            let action = match mode {
+                StreamMode::Raw => CleanAction::Emit,
+                StreamMode::Clean => filter.process(&buffer),
+            };
+            if writer_open {
+                let write_result = match action {
+                    CleanAction::Skip => Ok(()),
+                    CleanAction::Emit => out.write_all(buffer.as_bytes()),
+                    CleanAction::EmitWithLeadingBlank => out
+                        .write_all(b"\n")
+                        .and_then(|_| out.write_all(buffer.as_bytes())),
+                };
+                if write_result.is_err() {
+                    // Downstream closed (broken pipe). Keep draining so we
+                    // terminate normally, just stop emitting.
+                    writer_open = false;
+                }
             }
+            continue;
+        }
 
-            // Skip command echo lines
-            if is_command_echo(trimmed) {
-                continue;
+        // EOF, or a partial line still being written.
+        if final_pass {
+            break;
+        }
+        if stop.load(Ordering::Acquire) {
+            // Process exited; drain whatever remains, then finish.
+            final_pass = true;
+            continue;
+        }
+
+        sleep(poll_interval);
+
+        // Reopen to pick up truncation/recreation; reset position if the
+        // file shrank so we don't seek past EOF and stall forever.
+        match File::open(log_file) {
+            Ok(f) => {
+                if f.metadata().map(|m| m.len() < position).unwrap_or(false) {
+                    position = 0;
+                    filter = CleanFilter::new();
+                }
+                reader = BufReader::new(f);
             }
-
-            let is_blank = trimmed.is_empty();
-
-            // Skip leading blanks
-            if is_blank && !seen_content {
-                continue;
-            }
-
-            // Collapse consecutive blank lines
-            if is_blank && prev_blank {
-                continue;
-            }
-
-            if !is_blank {
-                seen_content = true;
-            }
-            prev_blank = is_blank;
-
-            // Output to stdout (this is data, not status)
-            print!("{}", buffer);
-        } else {
-            // No new data, check if file still exists
-            if !log_file.exists() {
-                break;
-            }
-
-            // Wait before polling again
-            sleep(poll_interval);
-
-            // Reopen file in case it was truncated/recreated
-            file = File::open(log_file)?;
-            reader = BufReader::new(file);
+            Err(_) => break, // log deleted out from under us
         }
     }
 
+    if writer_open {
+        let _ = out.flush();
+    }
     Ok(())
 }
 
@@ -599,6 +634,179 @@ end of do-file\n";
         assert!(!is_command_echo("123"));
         // A line like "3.14" is not command echo (no space after dot)
         assert!(!is_command_echo("3.14"));
+    }
+
+    // =========================================================================
+    // stream_log_to tests
+    // =========================================================================
+
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    const POLL: Duration = Duration::from_millis(5);
+
+    /// Spawn the streamer against `path`; returns a handle yielding captured output.
+    fn stream_in_thread(
+        path: std::path::PathBuf,
+        mode: StreamMode,
+        stop: Arc<AtomicBool>,
+    ) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            stream_log_to(&path, POLL, mode, &stop, &mut buf).unwrap();
+            buf
+        })
+    }
+
+    #[test]
+    fn test_stream_raw_incremental_writes() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("run.log");
+        std::fs::write(&log, "").unwrap();
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = stream_in_thread(log.clone(), StreamMode::Raw, stop.clone());
+
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(f, ". display 1").unwrap();
+        writeln!(f, "1").unwrap();
+        f.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+        writeln!(f, "end of do-file").unwrap();
+        writeln!(f, "r(199);").unwrap();
+        f.flush().unwrap();
+
+        stop.store(true, Ordering::Release);
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        // Raw mode: everything, including echo, marker, and trailer
+        assert_eq!(out, ". display 1\n1\nend of do-file\nr(199);\n");
+    }
+
+    #[test]
+    fn test_stream_clean_filters_echo_and_trailer() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("run.log");
+        std::fs::write(
+            &log,
+            "\n. display 1\n1\n\n\n. display 2\n2\n\nend of do-file\n\nr(199);\n",
+        )
+        .unwrap();
+
+        // Stop pre-set: streamer drains the complete file and exits.
+        let stop = Arc::new(AtomicBool::new(true));
+        let handle = stream_in_thread(log, StreamMode::Clean, stop);
+
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        assert_eq!(out, "1\n\n2\n");
+    }
+
+    #[test]
+    fn test_stream_terminates_when_log_never_created() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("never.log");
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = stream_in_thread(log, StreamMode::Raw, stop.clone());
+
+        std::thread::sleep(Duration::from_millis(30));
+        stop.store(true, Ordering::Release);
+        // Must terminate (previously spun forever) with no output.
+        let out = handle.join().unwrap();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn test_stream_terminates_without_end_marker() {
+        // Killed Stata: log exists but no trailer was ever written.
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("killed.log");
+        std::fs::write(&log, ". sleep 100000\n").unwrap();
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = stream_in_thread(log, StreamMode::Raw, stop.clone());
+
+        std::thread::sleep(Duration::from_millis(30));
+        stop.store(true, Ordering::Release);
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        assert_eq!(out, ". sleep 100000\n");
+    }
+
+    #[test]
+    fn test_stream_recovers_from_truncation() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("trunc.log");
+        std::fs::write(&log, "first phase line\n").unwrap();
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = stream_in_thread(log.clone(), StreamMode::Raw, stop.clone());
+
+        // Let the streamer read past what the truncated file will hold
+        std::thread::sleep(Duration::from_millis(50));
+        std::fs::write(&log, "new\n").unwrap(); // truncate + rewrite, shorter
+        std::thread::sleep(Duration::from_millis(50));
+
+        stop.store(true, Ordering::Release);
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        // Old content was already streamed; new content must appear too
+        // (previously: seek past EOF and stall forever).
+        assert_eq!(out, "first phase line\nnew\n");
+    }
+
+    #[test]
+    fn test_stream_holds_back_partial_lines() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("partial.log");
+        std::fs::write(&log, "hello").unwrap(); // no newline yet
+
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = stream_in_thread(log.clone(), StreamMode::Raw, stop.clone());
+
+        std::thread::sleep(Duration::from_millis(50));
+        let mut f = std::fs::OpenOptions::new().append(true).open(&log).unwrap();
+        writeln!(f, " world").unwrap();
+        f.flush().unwrap();
+        std::thread::sleep(Duration::from_millis(50));
+
+        stop.store(true, Ordering::Release);
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        assert_eq!(out, "hello world\n");
+    }
+
+    #[test]
+    fn test_stream_survives_closed_writer() {
+        struct BrokenPipe;
+        impl Write for BrokenPipe {
+            fn write(&mut self, _: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe))
+            }
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("pipe.log");
+        std::fs::write(&log, "line 1\nline 2\nend of do-file\n").unwrap();
+
+        let stop = AtomicBool::new(true);
+        let mut out = BrokenPipe;
+        // Must return Ok, not Err or panic, when downstream is closed.
+        stream_log_to(&log, POLL, StreamMode::Raw, &stop, &mut out).unwrap();
+    }
+
+    #[test]
+    fn test_stream_clean_ignores_marker_lookalike_in_raw_mode() {
+        // Raw mode must not terminate early on marker-lookalike output;
+        // everything after it still streams.
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("fake.log");
+        std::fs::write(&log, "end of do-file\nmore output after\n").unwrap();
+
+        let stop = Arc::new(AtomicBool::new(true));
+        let handle = stream_in_thread(log, StreamMode::Raw, stop);
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        assert_eq!(out, "end of do-file\nmore output after\n");
     }
 
     #[test]

@@ -252,39 +252,46 @@ impl StataExecutor {
         // Log file path was computed by RunPaths above; reuse it for streaming.
         let log_file = _paths.log.clone();
 
-        // Start log streaming thread if verbose or interactive
-        let stream_handle = if self.verbosity.should_stream_raw() {
-            let log_path = log_file.clone();
-            let poll_interval = self.progress_interval;
-
+        // Start log streaming thread if verbose or interactive. The thread
+        // terminates when `stop` is set after the Stata process exits — the
+        // log alone can't signal completion (a killed Stata writes no
+        // trailer, and scripts can print marker-lookalike output).
+        let stream_mode = if self.verbosity.should_stream_raw() {
             // Print header to separate stacy output from Stata log
             eprintln!("─────────────────────────────────────────────────────────────");
-            eprintln!("Stata log ({})", log_path.display());
+            eprintln!("Stata log ({})", log_file.display());
             eprintln!("─────────────────────────────────────────────────────────────");
-
-            Some(thread::spawn(move || {
-                let _ = log_reader::stream_log_file(&log_path, poll_interval);
-            }))
+            Some(log_reader::StreamMode::Raw)
         } else if self.verbosity.should_stream_clean() {
-            let log_path = log_file.clone();
-            let poll_interval = self.progress_interval;
-
-            Some(thread::spawn(move || {
-                let _ = log_reader::stream_log_file_clean(&log_path, poll_interval);
-            }))
+            Some(log_reader::StreamMode::Clean)
         } else {
             None
         };
 
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let stream_handle = stream_mode.map(|mode| {
+            let log_path = log_file.clone();
+            let poll_interval = self.progress_interval;
+            let stop = std::sync::Arc::clone(&stop);
+            thread::spawn(move || {
+                let _ = log_reader::stream_log(&log_path, poll_interval, mode, &stop);
+            })
+        });
+
         // Run Stata against the wrapper script, not the user's script.
         // Stata derives the log basename from the script path it's given —
         // the wrapper has a unique stem so concurrent runs cannot collide.
-        let run_result = run_stata(&_paths.wrapper, options)?;
+        // Don't propagate a spawn error until the streamer is released, or
+        // its thread spins unjoined forever.
+        let run_result = run_stata(&_paths.wrapper, options);
 
-        // Wait for streaming thread to finish
+        // Stata is done (or never started) — release and join the streamer.
+        stop.store(true, std::sync::atomic::Ordering::Release);
         if let Some(handle) = stream_handle {
             let _ = handle.join();
         }
+
+        let run_result = run_result?;
 
         // Parse log file for errors (with timing).
         //
