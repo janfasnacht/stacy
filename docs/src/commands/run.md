@@ -17,10 +17,16 @@ succeeded or failed—enabling integration with Make, Snakemake, and CI/CD.
 The command runs Stata with `-b -q`, parses the log for error patterns, and
 returns an appropriate exit code (0 for success, 1-10 for various errors).
 
-By default, clean output is shown after execution (boilerplate stripped). On
-failure, error details with official Stata documentation links and the log file
-path are displayed. Use `-v` to stream the raw log in real-time instead, or
-`-q` to suppress all output.
+Program output (boilerplate-stripped) streams to stdout live as Stata writes
+it — like `Rscript` or `python` — so `stacy run foo.do > out.log` and pipes
+behave as expected. stacy's own status and error messages go to stderr. On
+failure, error details with official Stata documentation links and the log
+file path are displayed. Use `-v` to stream the raw log instead, or `-q` to
+suppress all output.
+
+The batch log file is internal: removed on success, kept on failure. Use
+`--log <path>` to keep the raw Stata log as a durable artifact
+(`--quiet --log out.log` for a silent file-only run).
 
 Multiple scripts can be run sequentially (default, fail-fast) or in parallel
 (`--parallel`). Parallel mode runs all scripts regardless of failures.
@@ -46,6 +52,7 @@ For interactive use where you want to quickly check a result, see `stacy eval`.
 | `--engine` | Stata engine to use (overrides config and auto-detection) |
 | `--force` | Force rebuild even if cached |
 | `-j, --jobs` | Max parallel jobs (default: CPU count) |
+| `--log` | Write the raw Stata log to this path |
 | `-P, --parallel` | Run scripts in parallel |
 | `--profile` | Include execution metrics |
 | `-q, --quiet` | Suppress output |

@@ -175,7 +175,8 @@ Examples:
   stacy run --cd reports/table.do         Auto cd to script's directory
   stacy run script.do --engine /path/to/stata
                                         Use specific Stata binary
-  stacy run script.do -v                  Stream log output in real-time
+  stacy run script.do -v                  Stream the raw log in real-time
+  stacy run script.do --log run.log       Also write the raw Stata log to run.log
   stacy run script.do --format json       Machine-readable output
   stacy run script.do --trace 2           Trace execution at depth 2
   stacy run script.do --trace 2 -v        Trace + stream live
@@ -265,6 +266,11 @@ pub struct RunArgs {
     /// Kill script if it exceeds this many seconds (SIGTERM, then SIGKILL after 5s grace)
     #[arg(long, value_name = "SECONDS", value_parser = clap::value_parser!(u64).range(1..))]
     pub timeout: Option<u64>,
+
+    /// Write the raw Stata log to this path (in addition to normal output).
+    /// Without this flag the log is internal: removed on success, kept on failure.
+    #[arg(long, value_name = "PATH", conflicts_with = "parallel")]
+    pub log: Option<PathBuf>,
 }
 
 /// Check if a path is the stdin marker "-"
@@ -301,6 +307,13 @@ fn resolve_local_ado_paths(project: &Option<crate::project::Project>) -> Vec<Pat
 /// Main entry point - dispatches to appropriate execution mode
 pub fn execute(args: &RunArgs) -> Result<()> {
     use std::process;
+
+    // --log writes a single artifact; ambiguous with multiple scripts
+    if args.log.is_some() && args.scripts.len() > 1 {
+        return Err(Error::Config(
+            "--log requires a single script (or inline code)".into(),
+        ));
+    }
 
     // Check for stdin marker
     if args.scripts.len() == 1 && is_stdin_marker(&args.scripts[0]) {
@@ -373,6 +386,39 @@ fn resolve_working_dir(script: &Path, args: &RunArgs) -> Result<(PathBuf, Option
         Ok((abs_script, Some(abs_dir)))
     } else {
         Ok((abs_script, None))
+    }
+}
+
+/// Apply the log-retention policy after a run.
+///
+/// `--log <path>` moves the raw log there (the durable artifact) and returns
+/// that path. Otherwise the log is an internal file: removed when `delete`
+/// is set (success in human mode, where output was already streamed), kept
+/// for inspection when not (failures, and machine-readable formats whose
+/// output references it).
+fn finalize_log(log_file: &Path, delete: bool, dest: Option<&Path>) -> PathBuf {
+    match dest {
+        Some(dest) => {
+            // Rename, falling back to copy+remove across filesystems
+            let moved = std::fs::rename(log_file, dest).or_else(|_| {
+                std::fs::copy(log_file, dest).map(|_| {
+                    let _ = std::fs::remove_file(log_file);
+                })
+            });
+            match moved {
+                Ok(()) => dest.to_path_buf(),
+                Err(e) => {
+                    eprintln!("Warning: could not write log to {}: {}", dest.display(), e);
+                    log_file.to_path_buf()
+                }
+            }
+        }
+        None => {
+            if delete {
+                let _ = std::fs::remove_file(log_file);
+            }
+            log_file.to_path_buf()
+        }
     }
 }
 
@@ -465,6 +511,8 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
     // `script.with_extension("log")`. Hand the real path to TempScript so
     // its Drop cleans up the inline-run log (preserves pre-#20 behavior).
     temp_script.set_actual_log(result.log_file.clone());
+    // --log moves it out first; TempScript's best-effort Drop then no-ops.
+    result.log_file = finalize_log(&result.log_file, false, args.log.as_deref());
 
     if let Some(ref mut m) = metrics {
         m.end_phase("execution");
@@ -533,16 +581,6 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
                     "\x1b[32mPASS\x1b[0m  <inline code>  ({:.2}s)",
                     result.duration.as_secs_f64()
                 );
-                // Show clean output post-hoc only when not already streamed and not tracing
-                if !tracing && verbosity.should_show_clean_output_post_hoc() {
-                    if let Ok(raw) = crate::executor::log_reader::read_full_log(&result.log_file) {
-                        let clean = crate::executor::log_reader::strip_boilerplate(&raw);
-                        if !clean.is_empty() {
-                            println!();
-                            println!("{}", clean);
-                        }
-                    }
-                }
             }
 
             if args.profile {
@@ -766,6 +804,15 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
         }
     }
 
+    // Log retention: --log moves it aside; otherwise internal — removed on
+    // success in human mode (output was already streamed), kept on failure
+    // and for machine formats whose output references it.
+    result.log_file = finalize_log(
+        &result.log_file,
+        result.success && !format.is_machine_readable(),
+        args.log.as_deref(),
+    );
+
     // Build output
     let output = RunOutput {
         success: result.success,
@@ -825,16 +872,6 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
                     script_path.display(),
                     result.duration.as_secs_f64()
                 );
-                // Show clean output post-hoc only when not already streamed and not tracing
-                if !tracing && verbosity.should_show_clean_output_post_hoc() {
-                    if let Ok(raw) = crate::executor::log_reader::read_full_log(&result.log_file) {
-                        let clean = crate::executor::log_reader::strip_boilerplate(&raw);
-                        if !clean.is_empty() {
-                            println!();
-                            println!("{}", clean);
-                        }
-                    }
-                }
             }
 
             if args.profile {
@@ -846,6 +883,9 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
         }
     }
 
+    // process::exit skips destructors — drop explicitly so the trace
+    // TempScript cleans up its wrapper and log.
+    drop(_trace_temp_script);
     process::exit(result.exit_code);
 }
 
@@ -985,12 +1025,20 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
             ts.set_actual_log(result.log_file.clone());
         }
 
+        // Log retention: internal file — removed on success in human mode
+        // (output was already streamed), kept on failure / machine formats.
+        let final_log = finalize_log(
+            &result.log_file,
+            result.success && !format.is_machine_readable(),
+            None,
+        );
+
         let script_result = ScriptRunResult {
             script: script.clone(),
             success: result.success,
             exit_code: result.exit_code,
             duration_secs: result.duration.as_secs_f64(),
-            log_file: result.log_file.clone(),
+            log_file: final_log,
             error_message: if !result.success {
                 result.errors.first().map(format_stata_error)
             } else {
@@ -1163,13 +1211,31 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
         let mut script_results = Vec::with_capacity(total_scripts);
         let mut completed = 0;
 
-        for result in rx {
+        for mut result in rx {
             completed += 1;
 
             // Print progress in human mode (streaming output)
             if !args.quiet && format == OutputFormat::Human {
                 print_script_result(&result, completed, total_scripts);
+                // Script output as a grouped block (status on stderr,
+                // output on stdout) — never interleaved across scripts.
+                if let Ok(raw) = crate::executor::log_reader::read_full_log(&result.log_file) {
+                    let clean = crate::executor::log_reader::strip_boilerplate(&raw);
+                    if !clean.is_empty() {
+                        println!("==> {} <==", result.script.display());
+                        println!("{}", clean);
+                        println!();
+                    }
+                }
             }
+
+            // Log retention: removed on success in human mode (output shown
+            // above), kept on failure / machine formats.
+            result.log_file = finalize_log(
+                &result.log_file,
+                result.success && !format.is_machine_readable(),
+                None,
+            );
 
             script_results.push(result);
         }
@@ -1271,6 +1337,10 @@ fn print_script_result(result: &ScriptRunResult, index: usize, total: usize) {
         );
         if let Some(ref msg) = result.error_message {
             eprintln!("              {}", msg);
+        }
+        // Failures keep their log (successes don't) — say where it is
+        if !result.log_file.as_os_str().is_empty() {
+            eprintln!("              Log: {}", result.log_file.display());
         }
     }
 }

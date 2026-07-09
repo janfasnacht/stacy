@@ -29,6 +29,7 @@
 {synopt:{opt:engine(string)}}Stata engine to use (overrides config and auto-detection){p_end}
 {synopt:{opt:force}}Force rebuild even if cached{p_end}
 {synopt:{opt:jobs(integer)}}Max parallel jobs (default: CPU count){p_end}
+{synopt:{opt:log(string)}}Write the raw Stata log to this path{p_end}
 {synopt:{opt:parallel}}Run scripts in parallel{p_end}
 {synopt:{opt:profile}}Include execution metrics{p_end}
 {synopt:{opt:quietly}}Suppress output{p_end}
@@ -74,6 +75,9 @@
 
 {phang}
 {opt jobs} max parallel jobs (default: cpu count).
+
+{phang}
+{opt log} write the raw stata log to this path.
 
 {phang}
 {opt parallel} run scripts in parallel.
