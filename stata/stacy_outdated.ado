@@ -1,6 +1,6 @@
 *! stacy_outdated.ado - Check for package updates
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.3.0
+*! Version: 1.3.1
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 
