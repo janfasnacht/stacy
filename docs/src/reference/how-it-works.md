@@ -147,16 +147,24 @@ On `stacy install`, checksums are verified to ensure:
 
 ### Real-time Logs
 
-Use `-v` (verbose) to stream Stata's log output as it runs:
+Program output streams to stdout live by default — boilerplate-stripped
+(command echoes removed, blank runs collapsed), both in a terminal and when
+piped. Use `-v` (verbose) to stream the raw, unstripped log instead:
 
 ```bash
 stacy run -v long_analysis.do
 ```
 
-This displays log lines in real-time, useful for:
-- Monitoring long-running scripts
-- Debugging interactively
-- Seeing progress indicators
+Streaming stops when the Stata process exits, so killed or timed-out runs
+terminate cleanly. Closed pipes (`stacy run foo.do | head`) end the stream
+without error.
+
+### Log Files
+
+The batch log is internal: removed on success, kept on failure (the path is
+shown in the error output). `--log <path>` writes the raw log to a chosen
+location regardless of outcome. Machine-readable formats keep the log and
+report its path.
 
 ### Progress Reporting
 
@@ -175,14 +183,13 @@ progress_interval_seconds = 30
 
 ### Structured Logging
 
-For automated pipelines, combine `--format json` with verbose output:
+For automated pipelines, use `--format json`. Machine-readable formats imply
+quiet execution (no streaming); the JSON result's `log_file` field points to
+the kept Stata log:
 
 ```bash
-stacy run --format json -v analysis.do 2>log.txt
+stacy run --format json analysis.do
 ```
-
-- stdout: JSON result
-- stderr: Real-time log stream
 
 ---
 

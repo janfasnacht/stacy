@@ -12,9 +12,11 @@ pub enum Verbosity {
     /// ```
     Quiet = 0,
 
-    /// Non-TTY default: quiet during execution, show clean output post-hoc
+    /// Non-TTY default: stream clean output to stdout live, no status chrome
     ///
-    /// Used when stdout is piped (not a terminal).
+    /// Used when stdout is piped (not a terminal). Program output goes to
+    /// stdout as Stata writes it — like `Rscript`/`python` — so
+    /// `stacy run foo.do > foo.log` and downstream pipes work as expected.
     ///
     /// ```bash
     /// stacy run script.do | less
@@ -61,9 +63,13 @@ impl Verbosity {
         matches!(self, Verbosity::Verbose | Verbosity::VeryVerbose)
     }
 
-    /// Should we stream clean (boilerplate-stripped) output in real-time? (TTY default)
+    /// Should we stream clean (boilerplate-stripped) output in real-time?
+    /// (both defaults: TTY and piped)
     pub fn should_stream_clean(&self) -> bool {
-        matches!(self, Verbosity::DefaultInteractive)
+        matches!(
+            self,
+            Verbosity::DefaultInteractive | Verbosity::PipedDefault
+        )
     }
 
     /// Should we show error context (last 20 lines) on failure?
@@ -77,14 +83,6 @@ impl Verbosity {
     /// Should we show execution details (binary, command, etc.)?
     pub fn should_show_execution_details(&self) -> bool {
         matches!(self, Verbosity::VeryVerbose)
-    }
-
-    /// Should we show clean post-processed output after execution? (piped default only)
-    ///
-    /// Only at PipedDefault: Quiet suppresses everything, DefaultInteractive streams
-    /// clean output in real-time, Verbose/VeryVerbose stream the raw log instead.
-    pub fn should_show_clean_output_post_hoc(&self) -> bool {
-        matches!(self, Verbosity::PipedDefault)
     }
 
     /// Should we show "Running..." indicator and PASS/FAIL status?
@@ -137,7 +135,7 @@ mod tests {
     #[test]
     fn test_should_stream_clean() {
         assert!(!Verbosity::Quiet.should_stream_clean());
-        assert!(!Verbosity::PipedDefault.should_stream_clean());
+        assert!(Verbosity::PipedDefault.should_stream_clean());
         assert!(Verbosity::DefaultInteractive.should_stream_clean());
         assert!(!Verbosity::Verbose.should_stream_clean());
         assert!(!Verbosity::VeryVerbose.should_stream_clean());
@@ -160,15 +158,6 @@ mod tests {
         assert!(!Verbosity::DefaultInteractive.should_show_execution_details());
         assert!(!Verbosity::Verbose.should_show_execution_details());
         assert!(Verbosity::VeryVerbose.should_show_execution_details());
-    }
-
-    #[test]
-    fn test_should_show_clean_output_post_hoc() {
-        assert!(!Verbosity::Quiet.should_show_clean_output_post_hoc());
-        assert!(Verbosity::PipedDefault.should_show_clean_output_post_hoc());
-        assert!(!Verbosity::DefaultInteractive.should_show_clean_output_post_hoc());
-        assert!(!Verbosity::Verbose.should_show_clean_output_post_hoc());
-        assert!(!Verbosity::VeryVerbose.should_show_clean_output_post_hoc());
     }
 
     #[test]

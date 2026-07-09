@@ -19,6 +19,7 @@
         Engine(string)       - Stata engine to use (overrides config and auto-detection)
         Force                - Force rebuild even if cached
         Jobs(integer)        - Max parallel jobs (default: CPU count)
+        Log(string)          - Write the raw Stata log to this path
         PARALLEL             - Run scripts in parallel
         Profile              - Include execution metrics
         Quietly              - Suppress output
@@ -38,7 +39,7 @@
 
 program define stacy_run, rclass
     version 14.0
-    syntax [anything(name=script)] [, AllowGlobal Cache CacheOnly Code(string) Directory(string) Engine(string) Force Jobs(string) PARALLEL Profile Quietly Timeout(string) Trace(string) Verbose]
+    syntax [anything(name=script)] [, AllowGlobal Cache CacheOnly Code(string) Directory(string) Engine(string) Force Jobs(string) Log(string) PARALLEL Profile Quietly Timeout(string) Trace(string) Verbose]
 
     * Build command arguments
     local cmd "run"
@@ -77,6 +78,10 @@ program define stacy_run, rclass
 
     if `"`jobs'"' != "" {
         local cmd `"`cmd' --jobs "`jobs'""'
+    }
+
+    if `"`log'"' != "" {
+        local cmd `"`cmd' --log "`log'""'
     }
 
     if "`parallel'" != "" {

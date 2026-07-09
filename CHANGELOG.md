@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `stacy run` streams program output to stdout live in piped mode, matching `Rscript`/`python`, instead of printing it after execution (#24). Output content is unchanged (boilerplate-stripped); stacy's status and error messages stay on stderr. Note: on failure, partial output now appears on stdout before the failure is reported.
+- The batch log file is now internal: removed on success, kept on failure (path shown in the failure output). Machine-readable formats (`--format json|stata`) keep the log since their output references it. Use `--log <path>` for a durable log artifact.
+- `--parallel` prints each script's output as a grouped block on completion (`==> script.do <==` headers on stdout, status lines on stderr) instead of discarding it.
+- Raw `-v` streaming runs to process exit instead of stopping a few lines after the end-of-do-file marker.
+- `stacy task` output streams live as well (tasks run with the same piped-mode default).
+
+### Added
+
+- `stacy run --log <path>`: write the raw Stata log to a chosen path (works with `--quiet` for silent file-artifact mode).
+
+### Fixed
+
+- Log streaming (`-v`, `-vv`, TTY default) no longer hangs forever when Stata is killed (`--timeout` watchdog, external SIGKILL) or fails to launch without creating a log (#24).
+- `stacy run foo.do | head` no longer panics when the downstream pipe closes.
+- Log streaming now recovers from a truncated/recreated log file and no longer emits partially-written lines.
+- `--trace` no longer leaks its temporary traced script and log file on exit.
+
 ## [1.2.1] - 2026-05-06
 
 ### Added
