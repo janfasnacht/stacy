@@ -80,49 +80,6 @@ pub fn read_full_log(log_file: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-/// Check if log file indicates successful completion
-///
-/// Success = "end of do-file" with no r() error code after it
-///
-/// # Example
-///
-/// ```no_run
-/// use std::path::Path;
-/// use stacy::executor::log_reader::is_successful_completion;
-///
-/// let log = Path::new("script.log");
-/// if is_successful_completion(log)? {
-///     println!("Script succeeded!");
-/// }
-/// # Ok::<(), Box<dyn std::error::Error>>(())
-/// ```
-pub fn is_successful_completion(log_file: &Path) -> Result<bool> {
-    let lines = read_last_lines(log_file, 20)?;
-
-    // Look for "end of do-file" marker
-    let has_end_marker = lines.iter().any(|line| line.contains("end of do-file"));
-
-    if !has_end_marker {
-        // Incomplete log (probably killed/interrupted)
-        return Ok(false);
-    }
-
-    // Check if there's an error after the end marker
-    let end_marker_idx = lines
-        .iter()
-        .rposition(|line| line.contains("end of do-file"))
-        .unwrap();
-
-    let lines_after_end = &lines[end_marker_idx + 1..];
-
-    // Look for r() error codes
-    let has_error = lines_after_end
-        .iter()
-        .any(|line| line.contains("r(") && line.contains(");"));
-
-    Ok(!has_error)
-}
-
 /// Get error context from log file (last 20 lines, formatted)
 ///
 /// Used for default verbosity mode - shows context when error occurs.
@@ -807,33 +764,6 @@ end of do-file\n";
         let handle = stream_in_thread(log, StreamMode::Raw, stop);
         let out = String::from_utf8(handle.join().unwrap()).unwrap();
         assert_eq!(out, "end of do-file\nmore output after\n");
-    }
-
-    #[test]
-    fn test_is_successful_completion() -> Result<()> {
-        // Test successful completion
-        let mut temp = NamedTempFile::new()?;
-        writeln!(temp, ". display \"hello\"")?;
-        writeln!(temp, "hello")?;
-        writeln!(temp)?;
-        writeln!(temp, "end of do-file")?;
-        temp.flush()?;
-
-        assert!(is_successful_completion(temp.path())?);
-
-        // Test failed completion
-        let mut temp_fail = NamedTempFile::new()?;
-        writeln!(temp_fail, ". invalid command")?;
-        writeln!(temp_fail, "unrecognized command")?;
-        writeln!(temp_fail)?;
-        writeln!(temp_fail, "end of do-file")?;
-        writeln!(temp_fail)?;
-        writeln!(temp_fail, "r(199);")?;
-        temp_fail.flush()?;
-
-        assert!(!is_successful_completion(temp_fail.path())?);
-
-        Ok(())
     }
 
     #[test]
