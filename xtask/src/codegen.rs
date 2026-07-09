@@ -21,7 +21,7 @@ fn project_root() -> std::path::PathBuf {
 fn package_version() -> Result<String> {
     let cargo_toml = std::fs::read_to_string(project_root().join("Cargo.toml"))
         .context("Failed to read Cargo.toml")?;
-    let parsed: toml::Value = cargo_toml.parse().context("Failed to parse Cargo.toml")?;
+    let parsed: toml::Value = toml::from_str(&cargo_toml).context("Failed to parse Cargo.toml")?;
     parsed["package"]["version"]
         .as_str()
         .map(String::from)
