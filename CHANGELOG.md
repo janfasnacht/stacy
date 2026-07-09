@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Sequential/parallel task arrays now accept script paths (`all = ["clean", "src/02_analyze.do"]`), as the docs showed (#64). Defined task names take precedence.
 - Post-install dependency hints now comma-separate package names (`appears to need ftools, require`) instead of running them together (#63).
 - Failure context no longer loads the entire log into memory to number its last 20 lines (#66).
 - Log streaming (`-v`, `-vv`, TTY default) no longer hangs forever when Stata is killed (`--timeout` watchdog, external SIGKILL) or fails to launch without creating a log (#24).

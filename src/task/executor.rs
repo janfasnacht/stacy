@@ -190,19 +190,29 @@ impl<'a> TaskExecutor<'a> {
         Ok(task_result)
     }
 
+    /// Resolve a sequential/parallel array entry: a defined task name wins;
+    /// otherwise a path-looking entry runs as a script (#64).
+    fn resolve_entry(&self, parent: &str, entry: &str) -> Result<TaskDef> {
+        if let Some(task) = self.graph.get_task(entry) {
+            return Ok(task.clone());
+        }
+        if crate::task::is_script_ref(entry) {
+            return Ok(TaskDef::Simple(std::path::PathBuf::from(entry)));
+        }
+        Err(Error::Config(format!(
+            "Task '{}' references unknown task '{}'",
+            parent, entry
+        )))
+    }
+
     /// Execute tasks sequentially
     fn execute_sequential(&self, name: &str, tasks: &[String]) -> Result<TaskResult> {
         let mut result = TaskResult::empty(name);
 
         for task_name in tasks {
-            let task = self.graph.get_task(task_name).ok_or_else(|| {
-                Error::Config(format!(
-                    "Task '{}' references unknown task '{}'",
-                    name, task_name
-                ))
-            })?;
+            let task = self.resolve_entry(name, task_name)?;
 
-            let task_result = self.execute_task(task_name, task)?;
+            let task_result = self.execute_task(task_name, &task)?;
 
             // Merge results
             let failed = !task_result.success;
@@ -227,15 +237,8 @@ impl<'a> TaskExecutor<'a> {
         let task_defs: Vec<_> = tasks
             .iter()
             .map(|task_name| {
-                self.graph
-                    .get_task(task_name)
-                    .map(|t| (task_name.clone(), t.clone()))
-                    .ok_or_else(|| {
-                        Error::Config(format!(
-                            "Task '{}' references unknown task '{}'",
-                            name, task_name
-                        ))
-                    })
+                self.resolve_entry(name, task_name)
+                    .map(|t| (task_name.clone(), t))
             })
             .collect::<Result<Vec<_>>>()?;
 

@@ -126,9 +126,12 @@ impl TaskGraph {
         None
     }
 
-    /// Get all task names referenced by a task definition
+    /// Get all task names referenced by a task definition.
+    ///
+    /// Script-path entries (see [`is_script_ref`]) are not task references —
+    /// they run directly and can't participate in cycles.
     fn get_task_references(&self, task: &TaskDef) -> Vec<String> {
-        match task {
+        let refs = match task {
             TaskDef::Simple(_) => vec![],
             TaskDef::Sequential(tasks) => tasks.clone(),
             TaskDef::Complex(complex) => {
@@ -138,7 +141,10 @@ impl TaskGraph {
                     vec![]
                 }
             }
-        }
+        };
+        refs.into_iter()
+            .filter(|r| !is_script_ref(r) || self.tasks.contains_key(r))
+            .collect()
     }
 
     /// Find similar task names for "did you mean" suggestions
@@ -201,6 +207,15 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
     }
 
     matrix[m][n]
+}
+
+/// Does a sequential/parallel array entry name a script rather than a task?
+///
+/// Task names take precedence: this only decides how to treat entries that
+/// don't match any defined task. Anything with a path separator or a `.do`
+/// extension is run as a script.
+pub fn is_script_ref(entry: &str) -> bool {
+    entry.contains('/') || entry.contains('\\') || entry.ends_with(".do")
 }
 
 /// Get a description for a task definition
@@ -316,6 +331,60 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("references unknown task"));
+    }
+
+    #[test]
+    fn test_script_paths_in_arrays_validate() {
+        // Path-looking entries are scripts, not task references (#64)
+        let scripts = make_scripts(vec![
+            ("clean", TaskDef::Simple(PathBuf::from("src/01_clean.do"))),
+            (
+                "all",
+                TaskDef::Sequential(vec!["clean".to_string(), "src/02_analyze.do".to_string()]),
+            ),
+        ]);
+
+        let graph = TaskGraph::from_config(&scripts).unwrap();
+        assert_eq!(graph.len(), 2);
+    }
+
+    #[test]
+    fn test_task_name_wins_over_script_ref() {
+        // An entry that both names a task and looks like a path resolves to
+        // the task — it stays a reference for validation/cycles.
+        let scripts = make_scripts(vec![
+            ("a.do", TaskDef::Sequential(vec!["b.do".to_string()])),
+            ("b.do", TaskDef::Sequential(vec!["a.do".to_string()])),
+        ]);
+
+        let result = TaskGraph::from_config(&scripts);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("Circular dependency"));
+    }
+
+    #[test]
+    fn test_bare_unknown_name_still_errors() {
+        let scripts = make_scripts(vec![(
+            "all",
+            TaskDef::Sequential(vec!["analyze".to_string()]),
+        )]);
+
+        let result = TaskGraph::from_config(&scripts);
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("references unknown task"));
+    }
+
+    #[test]
+    fn test_is_script_ref() {
+        assert!(is_script_ref("src/02_analyze.do"));
+        assert!(is_script_ref("analyze.do"));
+        assert!(is_script_ref("src\\analyze.do"));
+        assert!(!is_script_ref("analyze"));
+        assert!(!is_script_ref("clean"));
     }
 
     #[test]
