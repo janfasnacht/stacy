@@ -24,7 +24,7 @@ caching effects.
 
 | Option | Description |
 |--------|-------------|
-| `--no_warmup` | Skip warmup runs |
+| `--no-warmup` | Skip warmup runs |
 | `-q, --quiet` | Suppress progress output |
 | `-n, --runs` | Number of measured runs |
 | `-w, --warmup` | Number of warmup runs |

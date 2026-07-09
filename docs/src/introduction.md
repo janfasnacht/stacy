@@ -47,6 +47,34 @@ results/output.dta: analysis.do data/input.dta
     stacy run analysis.do   # Stops on failure
 ```
 
+## One Tool, Two Interfaces
+
+stacy is a single binary you can drive from the terminal or from inside Stata:
+
+```bash
+# Terminal
+$ stacy run analysis.do --timeout 600
+```
+
+```stata
+. stacy run analysis.do, timeout(600)
+```
+
+The Stata commands are thin wrappers around the same binary, generated from the same command schema as the command-line interface, so the two never drift apart. `help stacy` works as for any other Stata package. See [Installation](./installation.md#from-within-stata) for setup.
+
+## What stacy Manages (and What It Doesn't)
+
+stacy makes two things explicit -- execution outcomes and the package environment -- and stays out of everything else:
+
+| stacy manages | stacy does not manage |
+|---------------|----------------------|
+| Whether a script succeeded (exit codes) | Orchestrating large pipelines (use Make/Snakemake on top) |
+| Which packages a project needs (manifest) | The Stata version itself (use Docker for full-stack pinning) |
+| Which exact versions are installed (lockfile + checksums) | Data files or other languages' environments |
+| Where Stata looks for packages at runtime (`S_ADO`) | Transitive dependencies (Stata packages don't declare them reliably) |
+
+This makes stacy a small, composable piece of infrastructure rather than a framework: it slots under whatever build system, scheduler, or CI service you already use.
+
 ## At a Glance
 
 | Without stacy | With stacy |

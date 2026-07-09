@@ -19,7 +19,7 @@ lockfile. Can also install individual packages directly from SSC or GitHub.
 | Option | Description |
 |--------|-------------|
 | `--frozen` | Fail if lockfile doesn't match stacy.toml |
-| `--no_verify` | Skip checksum verification |
+| `--no-verify` | Skip checksum verification |
 | `--with` | Include dependency groups (comma-separated: dev, test) |
 
 ## Examples

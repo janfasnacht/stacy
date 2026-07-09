@@ -909,10 +909,14 @@ fn generate_markdown(name: &str, command: &Command, schema: &Schema) -> Result<S
         out.push_str("| Option | Description |\n");
         out.push_str("|--------|-------------|\n");
         for (arg_name, arg) in &options {
+            let long = arg
+                .long
+                .clone()
+                .unwrap_or_else(|| arg_name.replace('_', "-"));
             let flag = if let Some(ref short) = arg.short {
-                format!("-{}, --{}", short, arg_name)
+                format!("-{}, --{}", short, long)
             } else {
-                format!("--{}", arg_name)
+                format!("--{}", long)
             };
             out.push_str(&format!("| `{}` | {} |\n", flag, arg.description));
         }
@@ -1065,7 +1069,16 @@ fn generate_exit_codes_md(schema: &Schema) -> Result<String> {
 
     // Stata r() code mapping
     out.push_str("## Stata r() Code Mapping\n\n");
-    out.push_str("stacy maps Stata's r() error codes to exit codes:\n\n");
+    out.push_str(
+        "The number inside `r(N)` is preserved in stacy's output (JSON field `r_code`, \
+         stored result `r(exit_code)` in Stata). The *shell* exit code is a category \
+         derived from it, in two steps:\n\n\
+         1. **Error database lookup.** stacy extracts error descriptions and categories \
+         from your local Stata installation (run `stacy doctor --refresh` after a Stata \
+         upgrade). If the code is found there, its category decides the exit code.\n\
+         2. **Range fallback.** Otherwise, the documented ranges from Stata's Programming \
+         Reference Manual apply:\n\n",
+    );
     out.push_str("| Exit Code | Stata r() Codes |\n");
     out.push_str("|-----------|----------------|\n");
 
@@ -1090,13 +1103,18 @@ fn generate_exit_codes_md(schema: &Schema) -> Result<String> {
     out.push_str("\tstacy run analysis.do  # Stops on non-zero exit\n");
     out.push_str("```\n\n");
 
+    out.push_str(
+        "This mapping is many-to-one by design: it compresses Stata's hundreds of \
+         return codes into a small, stable set that build tools can branch on.\n\n",
+    );
+
     // Stability note
     out.push_str("## Stability\n\n");
     out.push_str("Exit codes 0-10 are stable and will not change meaning. ");
     out.push_str("New categories may be added with codes 11+.\n\n");
 
     out.push_str("## See Also\n\n");
-    out.push_str("- [Error Detection](./errors.md)\n");
+    out.push_str("- [Error Detection](./how-it-works.md#error-detection)\n");
     out.push_str("- [stacy run](../commands/run.md)\n");
 
     Ok(out)

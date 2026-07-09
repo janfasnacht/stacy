@@ -17,7 +17,8 @@ stacy works standalone. You get error detection, lockfile packages, and the task
 ```toml
 [scripts]
 clean = "clean_data.do"
-all = ["clean", "analysis.do"]
+analysis = "analysis.do"
+all = ["clean", "analysis"]
 ```
 
 ```bash
@@ -75,6 +76,7 @@ No. stacy manages packages in its own cache and sets `S_ADO` at runtime.
 | 3 | File error |
 | 4 | Memory error |
 | 5 | Internal error |
+| 6 | Statistical error |
 | 10 | Environment error |
 
 ## Updates
@@ -101,6 +103,6 @@ Stata 14+ (MP, SE, BE, StataNow).
 
 Yes. Set `STATA_BINARY` environment variable.
 
-### Does stacy work with Stata GUI?
+### Can I use stacy without leaving Stata?
 
-stacy is for command-line workflows (batch mode). Use Stata directly for interactive work.
+Yes. Installing the Stata wrappers (`net install stacy, from("https://stacy.janfasnacht.com/stata")`) makes every command available from the Stata console: `stacy run analysis.do`, `stacy add estout`, and so on, with `help stacy` documentation. Under the hood, `stacy run` still executes your script in a fresh batch-mode Stata process -- that separate process is what makes the outcome observable and the environment isolated.

@@ -31,7 +31,7 @@ The batch log file is internal: removed on success, kept on failure. Use
 Multiple scripts can be run sequentially (default, fail-fast) or in parallel
 (`--parallel`). Parallel mode runs all scripts regardless of failures.
 
-For interactive use where you want to quickly check a result, see `stacy eval`.
+To check a quick result without a script file, use `stacy run -c 'display ...'`.
 
 ## Arguments
 
@@ -43,9 +43,9 @@ For interactive use where you want to quickly check a result, see `stacy eval`.
 
 | Option | Description |
 |--------|-------------|
-| `--allow_global` | Allow globally installed packages |
+| `--allow-global` | Allow globally installed packages |
 | `--cache` | Enable build cache (skip re-execution if script/deps unchanged) |
-| `--cache_only` | Fail if not in cache (useful for CI) |
+| `--cache-only` | Fail if not in cache (useful for CI) |
 | `--cd` | Change to script's parent directory |
 | `-c, --code` | Inline Stata code |
 | `-C, --directory` | Run Stata in this directory |
@@ -125,8 +125,8 @@ stacy run --format json analysis.do
 Enable Stata's set trace on for debugging
 
 ```bash
-stt run --trace 2 analysis.do
-stt run --trace 2 -v analysis.do
+stacy run --trace 2 analysis.do
+stacy run --trace 2 -v analysis.do
 ```
 
 ### Timeout
@@ -154,7 +154,6 @@ See [Exit Codes Reference](../reference/exit-codes.md) for details.
 
 ## See Also
 
-- [stacy eval](./eval.md)
 - [stacy bench](./bench.md)
 - [stacy task](./task.md)
 - [Exit Codes](../reference/exit-codes.md)

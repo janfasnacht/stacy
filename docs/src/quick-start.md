@@ -1,5 +1,7 @@
 # Quick Start
 
+This page uses terminal commands. If you installed the [Stata wrappers](./installation.md#from-within-stata), every command also works from the Stata console -- `. stacy run analysis.do` instead of `$ stacy run analysis.do`.
+
 ## 1. Verify Setup
 
 ```bash

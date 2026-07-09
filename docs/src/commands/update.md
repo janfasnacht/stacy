@@ -24,7 +24,7 @@ changes without applying them.
 
 | Option | Description |
 |--------|-------------|
-| `--dry_run` | Show what would be updated without making changes |
+| `--dry-run` | Show what would be updated without making changes |
 
 ## Examples
 

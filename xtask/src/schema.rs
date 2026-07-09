@@ -97,6 +97,9 @@ pub struct Argument {
     #[serde(default)]
     #[allow(dead_code)]
     pub short: Option<String>,
+    /// Long option flag when it differs from the kebab-cased argument name
+    #[serde(default)]
+    pub long: Option<String>,
     /// Conflicting argument (for CLI validation)
     #[serde(default)]
     #[allow(dead_code)]

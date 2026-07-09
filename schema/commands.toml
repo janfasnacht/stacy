@@ -70,9 +70,9 @@ The batch log file is internal: removed on success, kept on failure. Use
 Multiple scripts can be run sequentially (default, fail-fast) or in parallel
 (`--parallel`). Parallel mode runs all scripts regardless of failures.
 
-For interactive use where you want to quickly check a result, see `stacy eval`.
+To check a quick result without a script file, use `stacy run -c 'display ...'`.
 """
-see_also = ["./eval.md", "bench", "task", "../reference/exit-codes.md", "../guides/build-integration.md"]
+see_also = ["bench", "task", "../reference/exit-codes.md", "../guides/build-integration.md"]
 
 [commands.run.args]
 script = { type = "path", positional = true, required_unless = "code", description = "Script to execute" }
@@ -153,7 +153,7 @@ commands = ["stacy run --format json analysis.do"]
 [[commands.run.examples]]
 title = "Execution tracing"
 description = "Enable Stata's set trace on for debugging"
-commands = ["stt run --trace 2 analysis.do", "stt run --trace 2 -v analysis.do"]
+commands = ["stacy run --trace 2 analysis.do", "stacy run --trace 2 -v analysis.do"]
 
 [[commands.run.examples]]
 title = "Timeout"
@@ -915,10 +915,10 @@ status = { type = "string", json_path = "status", stata_type = "local", descript
 
 [exit_codes]
 0 = { name = "Success", description = "Operation completed successfully" }
-1 = { name = "Stata Error", description = "Stata r() code detected in log", r_codes = "most r() codes not in other categories" }
-2 = { name = "Syntax Error", description = "Invalid Stata syntax", r_codes = "r(198), r(199)" }
-3 = { name = "File Error", description = "File not found, permission denied, data errors", r_codes = "r(601), r(603), r(610), r(639), r(2000-2999)" }
-4 = { name = "Memory Error", description = "Insufficient memory", r_codes = "r(950)" }
+1 = { name = "Stata Error", description = "Stata r() code detected in log", r_codes = "all r() codes not in other categories" }
+2 = { name = "Syntax Error", description = "Invalid Stata syntax", r_codes = "r(100)-r(199), e.g. r(198), r(199)" }
+3 = { name = "File Error", description = "File not found, permission denied, data errors", r_codes = "r(600)-r(699), e.g. r(601), r(603)" }
+4 = { name = "Memory Error", description = "Insufficient memory", r_codes = "r(900)-r(999), e.g. r(950)" }
 5 = { name = "Internal Error", description = "stacy itself failed (not Stata)" }
 6 = { name = "Statistical Error", description = "Convergence failure, model problems", r_codes = "r(400)-r(499)" }
-10 = { name = "Environment Error", description = "Stata not found or configuration invalid" }
+10 = { name = "Environment Error", description = "Stata not found or configuration invalid", r_codes = "r(800)-r(899)" }
