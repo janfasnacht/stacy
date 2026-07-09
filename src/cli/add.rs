@@ -175,10 +175,11 @@ pub fn execute(args: &AddArgs) -> Result<()> {
                         let missing =
                             dep_scan::find_missing_deps(&package_lower, &cache_dir, &installed);
                         if !missing.is_empty() {
-                            let names = missing.join(" ");
                             println!(
                                 "    hint: {} appears to need {}. Run: stacy add {}",
-                                package_lower, names, names
+                                package_lower,
+                                missing.join(", "),
+                                missing.join(" ")
                             );
                         } else if let Some(hint) = hints::get_hint(&package_lower) {
                             // Fallback to hardcoded hints for edge cases
