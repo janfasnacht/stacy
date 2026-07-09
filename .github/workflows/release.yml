@@ -16,8 +16,22 @@ permissions:
   actions: write # dispatch homebrew.yml from the release job
 
 jobs:
+  preflight:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Tag matches Cargo.toml and CITATION.cff
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo_v=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          cff_v=$(grep -m1 '^version:' CITATION.cff | awk '{print $2}')
+          [ "$tag" = "$cargo_v" ] || { echo "Cargo.toml has $cargo_v, tag is $tag"; exit 1; }
+          [ "$tag" = "$cff_v" ] || { echo "CITATION.cff has $cff_v, tag is $tag (rerun 'cargo xtask codegen' and commit)"; exit 1; }
+
   build:
     name: Build (${{ matrix.target }})
+    needs: preflight
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
