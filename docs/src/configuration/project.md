@@ -38,7 +38,8 @@ assert = "ssc"
 
 [scripts]
 clean = "src/01_clean.do"
-build = ["clean", "src/02_build.do", "src/03_analyze.do"]
+analyze = "src/02_analyze.do"
+build = ["clean", "analyze"]
 ```
 
 ## Sections
@@ -107,14 +108,22 @@ Task definitions for [`stacy task`](../commands/task.md). Supports three formats
 
 ```toml
 [scripts]
-# Simple: run a single script
+# Simple: a task is a script path
 clean = "src/01_clean.do"
+analyze = "src/02_analyze.do"
+tables = "src/03_tables.do"
 
-# Sequential: run tasks/scripts in order
-build = ["clean", "src/02_build.do", "src/03_analyze.do"]
+# Sequential: an array runs tasks (or script paths) in order
+build = ["clean", "analyze", "src/03_tables.do"]
 
-# Parallel: run scripts concurrently
-test = { parallel = ["test/test1.do", "test/test2.do"] }
+# Parallel: run tasks (or script paths) concurrently
+outputs = { parallel = ["analyze", "tables"] }
+```
+
+Array entries and `parallel` lists may name other tasks or point directly at script paths. The object form also supports `script`, `args`, and `description` keys:
+
+```toml
+analyze = { script = "src/02_analyze.do", description = "Main estimates" }
 ```
 
 ## Important Notes
@@ -196,8 +205,9 @@ estout = "ssc"
 
 [scripts]
 clean = "src/01_clean.do"
-build = ["clean", "src/02_build.do"]
-all = ["build", "src/03_report.do"]
+build = "src/02_build.do"
+report = "src/03_report.do"
+all = ["clean", "build", "report"]
 ```
 
 ### CI-Friendly

@@ -1,12 +1,12 @@
 # Introduction
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/janfasnacht/stacy/releases)
+[![Version](https://img.shields.io/github/v/release/janfasnacht/stacy?label=version&color=blue)](https://github.com/janfasnacht/stacy/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/janfasnacht/stacy/blob/main/LICENSE)
 [![GitHub](https://img.shields.io/badge/github-janfasnacht/stacy-black)](https://github.com/janfasnacht/stacy)
 
-Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit: the outcome — whether execution succeeded — and the environment — what packages the project needs.
+Stata projects increasingly run inside larger workflows — a Makefile that rebuilds results when inputs change, a CI service that reruns an analysis on every commit, a replication package that must run unattended on a stranger's machine. Integration like this rests on two things Stata leaves implicit: whether a step succeeded, and what the project needs in order to run.
 
-**stacy** makes both explicit. Dependencies get a manifest and lockfile; execution gets proper exit codes. With these primitives, Stata projects can be versioned, automated, and reproduced.
+**stacy** makes both explicit. It is a task runner and package manager for Stata: `stacy run` executes a script, parses the log, and returns a proper exit code, while `stacy add` and `stacy install` maintain a manifest and lockfile for dependencies. Every command works from both the terminal and the Stata console. With these primitives, Stata projects can be automated, versioned, and reproduced.
 
 | If you know... | stacy is like... | Key similarity |
 |----------------|----------------|----------------|
@@ -46,6 +46,34 @@ A project that declares its dependencies can be installed identically elsewhere.
 results/output.dta: analysis.do data/input.dta
     stacy run analysis.do   # Stops on failure
 ```
+
+## One Tool, Two Interfaces
+
+stacy is a single binary you can drive from the terminal or from inside Stata:
+
+```bash
+# Terminal
+$ stacy run analysis.do --timeout 600
+```
+
+```stata
+. stacy run analysis.do, timeout(600)
+```
+
+The Stata commands are thin wrappers around the same binary, generated from the same command schema as the command-line interface, so the two never drift apart. `help stacy` works as for any other Stata package. See [Installation](./installation.md#from-within-stata) for setup.
+
+## What stacy Manages (and What It Doesn't)
+
+stacy makes two things explicit -- execution outcomes and the package environment -- and stays out of everything else:
+
+| stacy manages | stacy does not manage |
+|---------------|----------------------|
+| Whether a script succeeded (exit codes) | Orchestrating large pipelines (use Make/Snakemake on top) |
+| Which packages a project needs (manifest) | The Stata version itself (use Docker for full-stack pinning) |
+| Which exact versions are installed (lockfile + checksums) | Data files or other languages' environments |
+| Where Stata looks for packages at runtime (`S_ADO`) | Transitive dependencies (Stata packages don't declare them reliably) |
+
+This makes stacy a small, composable piece of infrastructure rather than a framework: it slots under whatever build system, scheduler, or CI service you already use.
 
 ## At a Glance
 

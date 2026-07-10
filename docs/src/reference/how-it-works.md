@@ -1,13 +1,41 @@
 # How It Works
 
-Technical details on stacy's architecture.
+What actually happens when stacy runs a script or installs a package. stacy has four moving parts: an execution engine, an error detector, package management, and a build cache. This page walks through each, then covers the machine interface and stacy's boundaries.
 
 ## Contents
 
+- [Script Execution](#script-execution)
 - [Error Detection](#error-detection)
 - [Package Isolation](#package-isolation)
+- [Build Cache](#build-cache)
 - [Output Streaming](#output-streaming)
 - [Machine Interface](#machine-interface)
+- [What stacy Does Not Do](#what-stacy-does-not-do)
+
+---
+
+## Script Execution
+
+`stacy run script.do` does four things:
+
+```
+┌───────────┐     ┌───────────┐     ┌─────────┐     ┌──────────┐
+│ Build     │ ──▶ │ Stata     │ ──▶ │ Log     │ ──▶ │ Exit     │
+│ S_ADO     │     │ -b -q     │     │ Parser  │     │ Code 0-10│
+└───────────┘     └───────────┘     └─────────┘     └──────────┘
+ from lockfile     fresh process     from the end    translated
+```
+
+1. **Build the environment.** If a lockfile is present, stacy constructs the `S_ADO` search path from it, so Stata sees exactly the locked packages (see [Package Isolation](#package-isolation)).
+2. **Run Stata.** The script runs in a fresh batch-mode process (`-b -q`). The `-q` flag skips your `profile.do`, so execution doesn't depend on machine-specific startup configuration.
+3. **Parse the log.** stacy reads the log Stata produced and determines whether the script succeeded (see [Error Detection](#error-detection)).
+4. **Translate the outcome.** Stata error codes become standard shell exit codes that any build tool understands.
+
+Extras that matter in practice:
+
+- `--timeout <seconds>` kills a hung script (SIGTERM, then SIGKILL after a grace period) -- useful for convergence loops on shared clusters.
+- `--parallel` runs multiple scripts concurrently, each in its own Stata process; output prints as a grouped block per script on completion, and internal logs are uniquely named, so `make -j` and Snakemake can run same-named scripts safely.
+- `-c 'display ...'` runs inline code without a script file.
 
 ---
 
@@ -15,71 +43,37 @@ Technical details on stacy's architecture.
 
 ### The Problem
 
-Stata's batch mode (`stata -b do script.do`) always exits with code 0, even when scripts fail. Errors are only visible in log files.
+Stata's batch mode always exits with code 0, even when scripts fail. Errors are only visible in log files.
 
 ### stacy's Solution
 
-1. **Execute**: stacy runs Stata with `-b -q` flags
-2. **Parse**: After Stata exits, stacy parses the log file
-3. **Detect**: Matches against Stata's official `r()` error codes
-4. **Report**: Returns appropriate exit code (1-10)
+stacy parses the log **from the end**. It locates the last `end of do-file` marker -- which corresponds to the outermost do-file in nested execution -- and scans the lines after it for a return-code pattern (`r(N);`). Found: the script failed with that code. Not found: it succeeded.
+
+This design handles the edge cases correctly:
+
+| Scenario | Behavior |
+|----------|----------|
+| Uncaptured error, e.g. `r(601)` | `r(N);` appears after the final marker -- failure |
+| `capture`d error | Doesn't propagate past `end of do-file` -- success |
+| Error in a nested do-file | Propagates to the outermost marker -- failure |
+| Script *prints* `"r(199);"` | Appears before the marker -- ignored |
+| Stata killed / crashed | No final marker at all -- reported as error, never as success |
+
+The error-detection logic is exercised by a test suite of 250+ cases covering nested do-files, captured errors, false positives from display output, and incomplete logs.
+
+### Error Descriptions
+
+To describe an error rather than just number it, stacy extracts Stata's own error descriptions from your installation at first run (`stacy doctor --refresh` re-extracts after a Stata upgrade). Where no description is available, it falls back to the documented range categories -- see [Exit Codes](./exit-codes.md) for the mapping.
+
+Failures print a human-readable description plus a link to the official manual page, so you can diagnose a remote job from the error output alone:
 
 ```
-┌───────────┐     ┌───────┐     ┌─────────┐     ┌──────────┐
-│ stacy run │ ──▶ │ Stata │ ──▶ │ Log     │ ──▶ │ Exit     │
-│           │     │ -b -q │     │ Parser  │     │ Code 0-10│
-└───────────┘     └───────┘     └─────────┘     └──────────┘
+FAIL  broken.do  (0.8s)
+
+   Error: r(199) - unrecognized command
+
+   See: https://www.stata.com/manuals/perror.pdf#r199
 ```
-
-### Error Patterns
-
-stacy recognizes errors in two forms:
-
-**r() codes** (primary):
-```
-r(199);
-```
-
-**Error messages** (secondary):
-```
-unrecognized command: foobar
-file myfile.dta not found
-```
-
-### Official Stata Error Codes
-
-stacy extracts error codes from your Stata installation at runtime (`stacy doctor` triggers this). It falls back to range-based categories from the [Stata Programming Reference Manual](https://www.stata.com/manuals/perror.pdf):
-
-| Range | Category | Examples |
-|-------|----------|----------|
-| r(1-99) | General errors | r(1) generic error |
-| r(100-199) | Syntax/variable errors | r(111) not found, r(199) unrecognized command |
-| r(400-499) | System limits | r(459) not sorted |
-| r(600-699) | File errors | r(601) file not found, r(603) file exists |
-| r(900-999) | Resource errors | r(950) insufficient memory |
-
-### 10 Most Common Errors
-
-| Code | Name | Typical Cause |
-|------|------|---------------|
-| r(100) | varlist required | Command needs variable list |
-| r(109) | type mismatch | String operation on numeric or vice versa |
-| r(111) | not found | Variable doesn't exist in dataset |
-| r(198) | invalid syntax | Malformed command |
-| r(199) | unrecognized command | Command doesn't exist or package missing |
-| r(459) | not sorted | Data must be sorted |
-| r(601) | file not found | File doesn't exist |
-| r(603) | file already exists | Need `replace` option |
-| r(950) | insufficient memory | Operation too large |
-
-### Accuracy
-
-Error detection achieves 97% accuracy on common patterns. Edge cases:
-
-- **`capture` blocks**: Intentionally suppressed errors are not reported
-  (captured errors don't produce `r(N);` after the "end of do-file" marker)
-- **Custom programs**: User-written error messages may not match patterns
-- **Unusual formatting**: Some packages produce non-standard log output
 
 ---
 
@@ -105,18 +99,11 @@ stacy uses a **global cache** with **per-project isolation**:
         └── reghdfe.ado
 ```
 
-**Cache benefits:**
-- Multiple versions coexist
-- Shared across projects (disk efficient)
-- Offline installation from cache
+Multiple versions coexist in the cache, projects share it (disk-efficient), and cached packages install offline.
 
 ### Runtime Isolation
 
-When you run `stacy run script.do`, stacy:
-
-1. Reads `stacy.lock` to determine required packages
-2. Builds a custom `S_ADO` path pointing to cached versions
-3. Launches Stata with this adopath
+When you run `stacy run script.do`, stacy reads `stacy.lock`, builds an `S_ADO` search path pointing at the exact cached versions, and launches Stata with it. Each project's path is built from its own lockfile:
 
 ```
 Project A (stacy.lock):          Project B (stacy.lock):
@@ -125,6 +112,13 @@ Project A (stacy.lock):          Project B (stacy.lock):
 
 Both use the same cache, but see different versions.
 ```
+
+Two modes:
+
+- **Strict (default):** only locked packages and Stata's built-ins (`BASE`) are visible. Nothing leaks in from your global `PLUS` or `PERSONAL` directories, so "works because of something installed on my machine" cannot happen.
+- **Allow-global (`--allow-global`):** locked packages take precedence, but globally installed packages remain available. Useful during development or incremental migration.
+
+Project-local `.ado` directories can be added to the path via the [`[paths]` config section](../configuration/project.md#paths).
 
 ### Lockfile Verification
 
@@ -136,39 +130,40 @@ version = "2024.03.15"
 checksum = "sha256:14af94e03edd..."
 ```
 
-On `stacy install`, checksums are verified to ensure:
-- Downloaded files match expected content
-- Cached packages haven't been modified
-- SSC hasn't silently updated the package
+On `stacy install`, checksums are verified to ensure downloaded files match expected content, cached packages haven't been modified, and SSC hasn't silently updated the package. See [Lockfile Format](./lockfile.md).
+
+---
+
+## Build Cache
+
+Pipelines often re-run scripts that haven't changed. `stacy run --cache` skips that work:
+
+1. stacy hashes the script and every do-file it depends on (`do`, `run`, and `include` statements, traced recursively -- the same parser behind `stacy deps`).
+2. If nothing changed since the last successful run, stacy replays the previous result (exit code, log path, duration) without launching Stata.
+
+The cache is project-local (`.stacy/cache/build.json`) and opt-in. `--force` re-runs regardless; `--cache-only` fails when no cached result exists, letting CI require a pre-populated cache. Files outside the do-file graph -- datasets, environment variables -- are not tracked; use `--force` when they change.
 
 ---
 
 ## Output Streaming
 
-### Real-time Logs
+### Real-time Output
 
-Program output streams to stdout live by default — boilerplate-stripped
-(command echoes removed, blank runs collapsed), both in a terminal and when
-piped. Use `-v` (verbose) to stream the raw, unstripped log instead:
+Program output streams to stdout live by default -- boilerplate-stripped (command echoes removed, blank runs collapsed), both in a terminal and when piped. Use `-v` (verbose) to stream the raw, unstripped log instead:
 
 ```bash
 stacy run -v long_analysis.do
 ```
 
-Streaming stops when the Stata process exits, so killed or timed-out runs
-terminate cleanly. Closed pipes (`stacy run foo.do | head`) end the stream
-without error.
+Streaming stops when the Stata process exits, so killed or timed-out runs terminate cleanly, and closed pipes (`stacy run foo.do | head`) end the stream without error.
 
 ### Log Files
 
-The batch log is internal: removed on success, kept on failure (the path is
-shown in the error output). `--log <path>` writes the raw log to a chosen
-location regardless of outcome. Machine-readable formats keep the log and
-report its path.
+The batch log is internal: it gets a unique name per invocation (so concurrent runs never collide), is removed on success, and is kept on failure — with its path printed in the failure output so you can inspect it. `--log <path>` writes the raw log to a chosen location regardless of outcome. Machine-readable formats keep the log and report its path.
 
 ### Progress Reporting
 
-For scripts without verbose mode, stacy shows periodic progress:
+Without verbose mode, stacy shows periodic progress:
 
 ```
 ⠋ Running: analysis.do (45s elapsed)
@@ -183,9 +178,7 @@ progress_interval_seconds = 30
 
 ### Structured Logging
 
-For automated pipelines, use `--format json`. Machine-readable formats imply
-quiet execution (no streaming); the JSON result's `log_file` field points to
-the kept Stata log:
+For automated pipelines, use `--format json`. Machine-readable formats imply quiet execution (no streaming); the JSON result's `log_file` field points to the kept Stata log:
 
 ```bash
 stacy run --format json analysis.do
@@ -195,7 +188,7 @@ stacy run --format json analysis.do
 
 ## Machine Interface
 
-stacy is designed for integration with other tools.
+stacy is designed to be a good Unix citizen: standard exit codes, machine-readable output, and no interactive surprises (update checks and colors are suppressed automatically in CI and piped output).
 
 ### JSON Output
 
@@ -221,13 +214,14 @@ Stable, semantic exit codes for scripting:
 | 3 | File error |
 | 4 | Memory error |
 | 5 | Internal error |
+| 6 | Statistical error |
 | 10 | Environment error |
 
 See [Exit Codes](./exit-codes.md) for mapping details.
 
 ### Build System Integration
 
-stacy's exit codes enable integration with any tool that respects Unix conventions:
+stacy's exit codes work with any tool that respects Unix conventions:
 
 **Make:**
 ```makefile
@@ -269,8 +263,20 @@ data <- jsonlite::fromJSON(paste(result, collapse = "\n"))
 
 ---
 
+## What stacy Does Not Do
+
+Knowing the boundaries is as useful as knowing the features:
+
+- **It is not a build system.** stacy decides whether a Stata step *succeeded*; Make, Snakemake, or statacons decide *which* steps run and in what order. They compose: point your build tool's Stata rule at `stacy run`. See [Build Integration](../guides/build-integration.md).
+- **It does not manage the Stata version, data files, or other languages.** The lockfile pins Stata *packages*. For full-stack reproducibility (OS, Stata itself, Python/R), use Docker -- stacy works the same inside a container.
+- **It does not resolve transitive dependencies.** SSC packages declare dependencies inconsistently, as free text, so automatic resolution would guess. If package A needs package B, add both: `stacy add A B`. `stacy doctor` and post-install scanning warn about likely missing dependencies.
+- **It does not replace interactive Stata.** stacy wraps batch execution. For exploratory work, use Stata as usual -- and run the finished script through `stacy run` to verify it stands on its own.
+
+---
+
 ## See Also
 
 - [Exit Codes](./exit-codes.md) - Exit code reference
 - [JSON Output](./json-output.md) - JSON schemas
+- [Lockfile Format](./lockfile.md) - Lockfile specification
 - [Stata Error Manual](https://www.stata.com/manuals/perror.pdf) - Official documentation
