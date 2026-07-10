@@ -126,7 +126,9 @@ pub fn parse_pkg_file(content: &str, package_name: &str) -> Result<PackageManife
     let mut requires = Vec::new();
     let mut stata_version = None;
 
-    for line in content.lines() {
+    // Some older SSC manifests use bare `\r` (classic-Mac) line endings, which
+    // `str::lines()` does not split on. Split on any of `\r\n`, `\n`, or `\r`.
+    for line in content.split(['\n', '\r']) {
         let line = line.trim();
 
         // Skip empty lines
@@ -544,6 +546,16 @@ d Requires: Stata version 7.0 (version 8 for labvalcombine).\n\
 f labutil.ado\n";
         let manifest = parse_pkg_file(content, "labutil").unwrap();
         assert_eq!(manifest.stata_version.as_deref(), Some("7.0"));
+    }
+
+    #[test]
+    fn test_parse_pkg_cr_only_line_endings() {
+        // Classic-Mac `.pkg` files use bare `\r`; str::lines() would collapse
+        // these into one line and drop every file entry (#79).
+        let content = "d 'EXAMPLE': a package\rf example.ado\rf example.sthlp\r";
+        let manifest = parse_pkg_file(content, "example").unwrap();
+        assert_eq!(manifest.title, "a package");
+        assert_eq!(manifest.files.len(), 2);
     }
 
     #[test]
