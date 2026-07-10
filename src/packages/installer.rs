@@ -30,6 +30,10 @@ pub struct InstallResult {
     pub from_mirror: bool,
     /// Combined checksum of all downloaded files
     pub package_checksum: String,
+    /// Package names declared on the manifest's `Requires:` line
+    pub declared_deps: Vec<String>,
+    /// Minimum Stata version declared on the manifest's `Requires:` line
+    pub required_stata_version: Option<String>,
 }
 
 /// Install a package from SSC
@@ -86,6 +90,8 @@ pub fn install_from_ssc(name: &str, project_root: &Path, group: &str) -> Result<
         was_update,
         from_mirror,
         package_checksum,
+        declared_deps: download.manifest.requires,
+        required_stata_version: download.manifest.stata_version,
     })
 }
 
@@ -174,6 +180,8 @@ pub fn install_package_github(
         was_update,
         from_mirror: false, // GitHub packages don't use SSC mirrors
         package_checksum: download.package_checksum.clone(),
+        declared_deps: download.manifest.requires.clone(),
+        required_stata_version: download.manifest.stata_version.clone(),
     })
 }
 
@@ -233,6 +241,8 @@ pub fn install_from_net(
         was_update,
         from_mirror: false,
         package_checksum: download.package_checksum,
+        declared_deps: download.manifest.requires,
+        required_stata_version: download.manifest.stata_version,
     })
 }
 
@@ -294,6 +304,8 @@ pub fn install_from_local(
         was_update,
         from_mirror: false,
         package_checksum: download.package_checksum,
+        declared_deps: Vec::new(), // local packages have no manifest
+        required_stata_version: None,
     })
 }
 

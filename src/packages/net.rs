@@ -136,6 +136,8 @@ mod tests {
                 distribution_date: Some("20260101".to_string()),
                 files: vec![],
                 description_lines: vec![],
+                requires: vec![],
+                stata_version: None,
             },
             files: vec![],
             package_checksum: "abc123".to_string(),

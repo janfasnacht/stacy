@@ -312,6 +312,8 @@ impl GitHubDownloader {
             distribution_date: None,
             files: matched_files,
             description_lines: vec![],
+            requires: vec![],
+            stata_version: None,
         })
     }
 
@@ -587,6 +589,8 @@ mod tests {
                 distribution_date: None,
                 files: vec![],
                 description_lines: vec![],
+                requires: vec![],
+                stata_version: None,
             },
             files: vec![
                 DownloadedFile {
