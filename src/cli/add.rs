@@ -166,14 +166,42 @@ pub fn execute(args: &AddArgs) -> Result<()> {
                 if format == OutputFormat::Human {
                     println!("  + {} ({})", package_lower, result.version);
 
+                    // Warn if the package declares a newer minimum Stata version
+                    // than the one stacy last detected. Silent when either
+                    // version is unknown (e.g. error codes never extracted).
+                    if let Some(required) = &result.required_stata_version {
+                        if let Ok(Some(db)) = crate::error::error_db::ErrorCodeCache::load() {
+                            if let Some(detected) = db.stata_version.as_deref() {
+                                if let Some(warning) =
+                                    stata_version_warning(&package_lower, required, detected)
+                                {
+                                    println!("    warning: {}", warning);
+                                }
+                            }
+                        }
+                    }
+
                     // Scan installed files for implicit dependencies
                     let installed: HashSet<String> =
                         config.packages.all_package_names().into_iter().collect();
                     if let Ok(cache_dir) =
                         global_cache::package_path(&package_lower, &result.version)
                     {
-                        let missing =
+                        let mut missing =
                             dep_scan::find_missing_deps(&package_lower, &cache_dir, &installed);
+                        // Supplement the .ado scan with deps the author declared
+                        // on the manifest's `Requires:` line — these catch
+                        // dependencies resolved dynamically at runtime that
+                        // static scanning misses.
+                        for dep in &result.declared_deps {
+                            if dep != &package_lower
+                                && !installed.contains(dep)
+                                && !missing.contains(dep)
+                            {
+                                missing.push(dep.clone());
+                            }
+                        }
+                        missing.sort();
                         if !missing.is_empty() {
                             println!(
                                 "    hint: {} appears to need {}. Run: stacy add {}",
@@ -256,6 +284,21 @@ pub fn execute(args: &AddArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Build a warning when a package's declared minimum Stata version is newer
+/// than the detected Stata. Returns `None` when the installed Stata already
+/// satisfies the requirement.
+fn stata_version_warning(package: &str, required: &str, detected: &str) -> Option<String> {
+    // compare_versions(current, latest) is true when latest > current.
+    if crate::update_check::compare_versions(detected, required) {
+        Some(format!(
+            "{} requires Stata {}, but the detected Stata is {}",
+            package, required, detected
+        ))
+    } else {
+        None
+    }
 }
 
 fn parse_source(source: &str) -> Result<ParsedSource> {
@@ -407,6 +450,19 @@ fn print_human_summary(output: &AddOutput) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_stata_version_warning_when_required_is_newer() {
+        let w = stata_version_warning("regsensitivity", "15", "14.2");
+        assert!(w.is_some());
+        assert!(w.unwrap().contains("regsensitivity requires Stata 15"));
+    }
+
+    #[test]
+    fn test_stata_version_no_warning_when_satisfied() {
+        assert!(stata_version_warning("reghdfe", "11.2", "18.0").is_none());
+        assert!(stata_version_warning("reghdfe", "11.2", "11.2").is_none());
+    }
 
     #[test]
     fn test_parse_source_ssc() {
