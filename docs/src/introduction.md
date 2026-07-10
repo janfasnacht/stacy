@@ -1,12 +1,12 @@
 # Introduction
 
-[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/janfasnacht/stacy/releases)
+[![Version](https://img.shields.io/github/v/release/janfasnacht/stacy?label=version&color=blue)](https://github.com/janfasnacht/stacy/releases)
 [![License](https://img.shields.io/badge/license-MIT-green)](https://github.com/janfasnacht/stacy/blob/main/LICENSE)
 [![GitHub](https://img.shields.io/badge/github-janfasnacht/stacy-black)](https://github.com/janfasnacht/stacy)
 
-Stata projects need to compose: with build systems that expect exit codes, with environments that must be reconstructed, with pipelines that mix languages. But Stata leaves two things implicit that composition requires to be explicit: the outcome — whether execution succeeded — and the environment — what packages the project needs.
+Stata projects increasingly run inside larger workflows — a Makefile that rebuilds results when inputs change, a CI service that reruns an analysis on every commit, a replication package that must run unattended on a stranger's machine. Integration like this rests on two things Stata leaves implicit: whether a step succeeded, and what the project needs in order to run.
 
-**stacy** makes both explicit. Dependencies get a manifest and lockfile; execution gets proper exit codes. With these primitives, Stata projects can be versioned, automated, and reproduced.
+**stacy** makes both explicit. It is a task runner and package manager for Stata: `stacy run` executes a script, parses the log, and returns a proper exit code, while `stacy add` and `stacy install` maintain a manifest and lockfile for dependencies. Every command works from both the terminal and the Stata console. With these primitives, Stata projects can be automated, versioned, and reproduced.
 
 | If you know... | stacy is like... | Key similarity |
 |----------------|----------------|----------------|
