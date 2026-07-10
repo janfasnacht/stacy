@@ -159,7 +159,7 @@ Streaming stops when the Stata process exits, so killed or timed-out runs termin
 
 ### Log Files
 
-The batch log is internal: it gets a unique name per invocation (so concurrent runs never collide), is removed on success, and is kept on failure. `--log <path>` writes the raw log to a chosen location regardless of outcome. Machine-readable formats keep the log and report its path.
+The batch log is internal: it gets a unique name per invocation (so concurrent runs never collide), is removed on success, and is kept on failure — with its path printed in the failure output so you can inspect it. `--log <path>` writes the raw log to a chosen location regardless of outcome. Machine-readable formats keep the log and report its path.
 
 ### Progress Reporting
 

@@ -63,9 +63,9 @@ failure, error details with official Stata documentation links and the log
 file path are displayed. Use `-v` to stream the raw log instead, or `-q` to
 suppress all output.
 
-The batch log file is internal: removed on success, kept on failure. Use
-`--log <path>` to keep the raw Stata log as a durable artifact
-(`--quiet --log out.log` for a silent file-only run).
+The batch log file is internal: removed on success, kept on failure with its
+path printed in the failure output. Use `--log <path>` to keep the raw Stata
+log as a durable artifact (`--quiet --log out.log` for a silent file-only run).
 
 Multiple scripts can be run sequentially (default, fail-fast) or in parallel
 (`--parallel`). Parallel mode runs all scripts regardless of failures.
