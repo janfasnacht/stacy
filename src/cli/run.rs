@@ -557,7 +557,12 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
                 if let Some(error) = result.errors.first() {
                     print_error_details(error);
                 }
-                // Log context only when not quiet and log wasn't already streamed
+                // Failure keeps its log — always say where it is (CI/batch too).
+                // Streaming shows the log's content, not the kept file's path.
+                if !result.log_file.as_os_str().is_empty() {
+                    eprintln!("\n   Log: {}", result.log_file.display());
+                }
+                // Short excerpt only when the log wasn't already streamed live.
                 if !verbosity.is_quiet()
                     && !verbosity.should_stream_raw()
                     && !verbosity.should_stream_clean()
@@ -570,8 +575,6 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
                     if let Ok(raw) = crate::executor::log_reader::read_full_log(&result.log_file) {
                         let clean = crate::executor::log_reader::strip_boilerplate(&raw);
                         if !clean.is_empty() {
-                            eprintln!();
-                            eprintln!("   Log:");
                             print_log_context_n(&clean, context_lines);
                         }
                     }
@@ -848,7 +851,12 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
                 if let Some(error) = result.errors.first() {
                     print_error_details(error);
                 }
-                // Log context only when not quiet and log wasn't already streamed
+                // Failure keeps its log — always say where it is (CI/batch too).
+                // Streaming shows the log's content, not the kept file's path.
+                if !result.log_file.as_os_str().is_empty() {
+                    eprintln!("\n   Log: {}", result.log_file.display());
+                }
+                // Short excerpt only when the log wasn't already streamed live.
                 if !verbosity.is_quiet()
                     && !verbosity.should_stream_raw()
                     && !verbosity.should_stream_clean()
@@ -858,7 +866,6 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
                     } else {
                         FAILURE_CONTEXT_LINES
                     };
-                    eprintln!("\n   Log: {}", result.log_file.display());
                     if let Ok(raw) = crate::executor::log_reader::read_full_log(&result.log_file) {
                         let clean = crate::executor::log_reader::strip_boilerplate(&raw);
                         if !clean.is_empty() {
