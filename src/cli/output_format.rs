@@ -52,8 +52,9 @@ pub fn resolve_verbosity(quiet: bool, verbose: u8, format: OutputFormat) -> Verb
 ///
 /// In Stata, double-quoted strings ("...") do not expand macros,
 /// so only embedded double quotes need escaping (replaced with single quotes).
+/// Line breaks become spaces — a raw newline would split the assignment.
 pub fn escape_stata_string(s: &str) -> String {
-    s.replace('"', "'")
+    s.replace('"', "'").replace(['\n', '\r'], " ")
 }
 
 /// Format a boolean as a Stata scalar assignment
@@ -183,6 +184,13 @@ mod tests {
         assert!(!OutputFormat::Human.is_machine_readable());
         assert!(OutputFormat::Json.is_machine_readable());
         assert!(OutputFormat::Stata.is_machine_readable());
+    }
+
+    #[test]
+    fn test_escape_stata_string_replaces_line_breaks() {
+        assert_eq!(escape_stata_string("line1\nline2"), "line1 line2");
+        assert_eq!(escape_stata_string("line1\r\nline2"), "line1  line2");
+        assert_eq!(escape_stata_string("line1\rline2"), "line1 line2");
     }
 
     #[test]
