@@ -21,6 +21,8 @@
 {synopthdr}
 {synoptline}
 {syntab:Main}
+{synopt:{opt:cd}}Run each test in its own parent directory{p_end}
+{synopt:{opt:directory(string)}}Run tests in this directory{p_end}
 {synopt:{opt:filter(string)}}Filter tests by pattern{p_end}
 {synopt:{opt:list}}List tests without running{p_end}
 {synopt:{opt:parallel}}Run tests in parallel{p_end}
@@ -38,6 +40,12 @@
 
 {marker options}{...}
 {title:Options}
+
+{phang}
+{opt cd} run each test in its own parent directory.
+
+{phang}
+{opt directory} run tests in this directory.
 
 {phang}
 {opt filter} filter tests by pattern.

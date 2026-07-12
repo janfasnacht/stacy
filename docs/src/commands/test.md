@@ -10,9 +10,14 @@ stacy test <TEST> [OPTIONS]
 
 ## Description
 
-Discovers and runs test scripts from the `test/` directory. Tests are Stata
-scripts that use assertion commands. Supports filtering, parallel execution,
-and verbose output for debugging failures.
+Discovers and runs test scripts from the `tests/` or `test/` directory. Tests
+are Stata scripts that use assertion commands. Supports filtering, parallel
+execution, and verbose output for debugging failures.
+
+Each test runs with the project root as the working directory, so relative
+paths in tests resolve from the project root regardless of where `stacy test`
+is invoked. Use `--directory <dir>` to run tests in a specific directory, or
+`--cd` to run each test in its own parent directory.
 
 ## Arguments
 
@@ -24,6 +29,8 @@ and verbose output for debugging failures.
 
 | Option | Description |
 |--------|-------------|
+| `--cd` | Run each test in its own parent directory |
+| `-C, --directory` | Run tests in this directory |
 | `-f, --filter` | Filter tests by pattern |
 | `--list` | List tests without running |
 | `--parallel` | Run tests in parallel |
@@ -48,6 +55,12 @@ stacy test test_regression
 
 ```bash
 stacy test -f 'regression*'
+```
+
+### Run each test in its own directory
+
+```bash
+stacy test --cd
 ```
 
 ## Exit Codes

@@ -780,15 +780,22 @@ description = "Run tests"
 category = "execution"
 stata_command = "stacy_test"
 long_description = """
-Discovers and runs test scripts from the `test/` directory. Tests are Stata
-scripts that use assertion commands. Supports filtering, parallel execution,
-and verbose output for debugging failures.
+Discovers and runs test scripts from the `tests/` or `test/` directory. Tests
+are Stata scripts that use assertion commands. Supports filtering, parallel
+execution, and verbose output for debugging failures.
+
+Each test runs with the project root as the working directory, so relative
+paths in tests resolve from the project root regardless of where `stacy test`
+is invoked. Use `--directory <dir>` to run tests in a specific directory, or
+`--cd` to run each test in its own parent directory.
 """
 see_also = ["run"]
 
 [commands.test.args]
 test = { type = "string", positional = true, description = "Specific test to run" }
 filter = { type = "string", short = "f", description = "Filter tests by pattern", stata_option = "Filter(string)" }
+directory = { type = "path", short = "C", conflicts_with = "cd", description = "Run tests in this directory", stata_option = "Directory(string)" }
+cd = { type = "bool", long = "cd", conflicts_with = "directory", description = "Run each test in its own parent directory", stata_option = "CD" }
 parallel = { type = "bool", description = "Run tests in parallel", stata_option = "PARALLEL" }
 list = { type = "bool", description = "List tests without running", stata_option = "LIST" }
 quiet = { type = "bool", short = "q", description = "Suppress progress output", stata_option = "Quiet" }
@@ -823,6 +830,10 @@ commands = ["stacy test test_regression"]
 [[commands.test.examples]]
 title = "Filter tests"
 commands = ["stacy test -f 'regression*'"]
+
+[[commands.test.examples]]
+title = "Run each test in its own directory"
+commands = ["stacy test --cd"]
 
 
 # =============================================================================

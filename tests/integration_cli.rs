@@ -2102,6 +2102,132 @@ fn test_test_parallel_execution() {
 }
 
 // ============================================================================
+// Test command working directory tests
+// ============================================================================
+
+#[test]
+fn test_test_help_documents_working_directory() {
+    stacy()
+        .arg("test")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(
+            "project root as the working directory",
+        ))
+        .stdout(predicate::str::contains("--cd"))
+        .stdout(predicate::str::contains("-C, --directory"));
+}
+
+#[test]
+fn test_test_cd_conflicts_with_directory() {
+    stacy()
+        .arg("test")
+        .arg("--cd")
+        .arg("-C")
+        .arg(".")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("cannot be used with"));
+}
+
+#[test]
+fn test_test_directory_validates_directory_exists() {
+    let temp = TempDir::new().unwrap();
+    fs::create_dir_all(temp.path().join("tests")).unwrap();
+    fs::write(temp.path().join("tests/test_a.do"), "display 1").unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("test")
+        .arg("-C")
+        .arg("/nonexistent/directory/path")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("Directory not found"));
+}
+
+#[test]
+#[ignore]
+fn test_test_runs_from_project_root_by_default() {
+    // A test writing to a relative path lands in the project root,
+    // even when stacy is invoked from a subdirectory
+    let temp = TempDir::new().unwrap();
+    fs::write(temp.path().join("stacy.toml"), "[project]\n").unwrap();
+    fs::create_dir_all(temp.path().join("tests")).unwrap();
+    fs::write(
+        temp.path().join("tests/test_wd.do"),
+        "file open fh using \"output.txt\", write replace\nfile write fh \"root\"\nfile close fh",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path().join("tests"))
+        .arg("test")
+        .assert()
+        .success();
+
+    assert!(
+        temp.path().join("output.txt").exists(),
+        "output.txt should be created in the project root"
+    );
+}
+
+#[test]
+#[ignore]
+fn test_test_cd_runs_in_test_directory() {
+    // With --cd, relative paths resolve from the test's own directory
+    let temp = TempDir::new().unwrap();
+    fs::write(temp.path().join("stacy.toml"), "[project]\n").unwrap();
+    fs::create_dir_all(temp.path().join("tests")).unwrap();
+    fs::write(
+        temp.path().join("tests/test_wd.do"),
+        "file open fh using \"output.txt\", write replace\nfile write fh \"cd\"\nfile close fh",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("test")
+        .arg("--cd")
+        .assert()
+        .success();
+
+    assert!(
+        temp.path().join("tests/output.txt").exists(),
+        "output.txt should be created in the test's directory"
+    );
+}
+
+#[test]
+#[ignore]
+fn test_test_directory_runs_in_given_directory() {
+    // With -C, relative paths resolve from the given directory
+    let temp = TempDir::new().unwrap();
+    fs::write(temp.path().join("stacy.toml"), "[project]\n").unwrap();
+    fs::create_dir_all(temp.path().join("tests")).unwrap();
+    fs::create_dir_all(temp.path().join("workdir")).unwrap();
+    fs::write(
+        temp.path().join("tests/test_wd.do"),
+        "file open fh using \"output.txt\", write replace\nfile write fh \"dir\"\nfile close fh",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("test")
+        .arg("-C")
+        .arg("workdir")
+        .assert()
+        .success();
+
+    assert!(
+        temp.path().join("workdir/output.txt").exists(),
+        "output.txt should be created in the -C directory"
+    );
+}
+
+// ============================================================================
 // Run command working directory tests
 // ============================================================================
 

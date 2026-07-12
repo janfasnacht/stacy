@@ -11,6 +11,8 @@
         stacy_test [test] [, options]
 
     Options:
+        CD                   - Run each test in its own parent directory
+        Directory(string)    - Run tests in this directory
         Filter(string)       - Filter tests by pattern
         LIST                 - List tests without running
         PARALLEL             - Run tests in parallel
@@ -29,13 +31,21 @@
 
 program define stacy_test, rclass
     version 14.0
-    syntax [anything(name=test)] [, Filter(string) LIST PARALLEL Quiet Verbose]
+    syntax [anything(name=test)] [, CD Directory(string) Filter(string) LIST PARALLEL Quiet Verbose]
 
     * Build command arguments
     local cmd "test"
 
     if `"`test'"' != "" {
         local cmd `"`cmd' "`test'""'
+    }
+
+    if "`cd'" != "" {
+        local cmd `"`cmd' --cd"'
+    }
+
+    if `"`directory'"' != "" {
+        local cmd `"`cmd' --directory "`directory'""'
     }
 
     if `"`filter'"' != "" {
