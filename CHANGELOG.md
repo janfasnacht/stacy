@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Post-install dependency hints now also read the `Requires:` line of a package's `.pkg` manifest, catching author-declared SSC dependencies that static `.ado` scanning misses (#78).
 - `stacy add` warns when a package's manifest declares a newer minimum Stata version than the one stacy last detected (#82).
 
+### Fixed
+
+- `.pkg` manifests with bare `\r` (classic-Mac) line endings no longer parse as a title with no files (#79).
+
 ## [1.3.1] - 2026-07-10
 
 ### Added
