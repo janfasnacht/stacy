@@ -38,3 +38,6 @@ Thumbs.db
 # Documentation
 /docs/book/
 *.bundle
+
+# Claude Code local config
+.claude/
