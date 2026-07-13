@@ -23,6 +23,7 @@ impl TaskGraph {
         };
 
         // Validate on construction
+        graph.validate_definitions()?;
         graph.validate_references()?;
         graph.validate_no_cycles()?;
 
@@ -54,6 +55,32 @@ impl TaskGraph {
     /// Check if the graph is empty
     pub fn is_empty(&self) -> bool {
         self.tasks.is_empty()
+    }
+
+    /// Validate that every task defines some work.
+    ///
+    /// A table form without `script` or `parallel` (e.g. a typo'd key —
+    /// serde ignores unknown keys) or an empty array would otherwise run
+    /// zero scripts and report success (#92).
+    fn validate_definitions(&self) -> Result<()> {
+        for (name, task) in &self.tasks {
+            let no_work = match task {
+                TaskDef::Simple(_) => false,
+                TaskDef::Sequential(tasks) => tasks.is_empty(),
+                TaskDef::Complex(complex) => match (&complex.parallel, &complex.script) {
+                    (Some(parallel), _) => parallel.is_empty(),
+                    (None, Some(_)) => false,
+                    (None, None) => true,
+                },
+            };
+            if no_work {
+                return Err(Error::Config(format!(
+                    "Task '{}' defines no work: use 'script', 'parallel', or a non-empty array of tasks",
+                    name
+                )));
+            }
+        }
+        Ok(())
     }
 
     /// Validate that all task references exist
@@ -318,6 +345,52 @@ mod tests {
 
         let graph = TaskGraph::from_config(&scripts).unwrap();
         assert_eq!(graph.len(), 3);
+    }
+
+    #[test]
+    fn test_table_task_without_work_errors() {
+        // Table form with neither `script` nor `parallel` — e.g. a typo'd
+        // key that serde silently drops — must not become a no-op (#92)
+        let scripts = make_scripts(vec![(
+            "build",
+            TaskDef::Complex(ComplexTask {
+                parallel: None,
+                script: None,
+                args: None,
+                description: Some("Build everything".to_string()),
+            }),
+        )]);
+
+        let result = TaskGraph::from_config(&scripts);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("'build' defines no work"));
+    }
+
+    #[test]
+    fn test_empty_sequential_task_errors() {
+        let scripts = make_scripts(vec![("all", TaskDef::Sequential(vec![]))]);
+
+        let result = TaskGraph::from_config(&scripts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("defines no work"));
+    }
+
+    #[test]
+    fn test_empty_parallel_task_errors() {
+        let scripts = make_scripts(vec![(
+            "outputs",
+            TaskDef::Complex(ComplexTask {
+                parallel: Some(vec![]),
+                script: None,
+                args: None,
+                description: None,
+            }),
+        )]);
+
+        let result = TaskGraph::from_config(&scripts);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("defines no work"));
     }
 
     #[test]

@@ -142,8 +142,12 @@ impl<'a> TaskExecutor<'a> {
                 } else if let Some(ref script) = complex.script {
                     self.execute_script(name, script)
                 } else {
-                    // Empty task
-                    Ok(TaskResult::empty(name))
+                    // Rejected at TaskGraph construction; guard against
+                    // graphs built another way (#92).
+                    Err(Error::Config(format!(
+                        "Task '{}' defines no work: use 'script', 'parallel', or a non-empty array of tasks",
+                        name
+                    )))
                 }
             }
         }
