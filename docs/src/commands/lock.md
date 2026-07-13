@@ -40,7 +40,7 @@ stacy lock --check
 | Code | Meaning |
 |------|--------|
 | 0 | Success / in sync |
-| 1 | Out of sync (with --check) |
+| 1 | A package could not be resolved, or the lockfile is out of sync (with --check) |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 

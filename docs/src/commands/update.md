@@ -51,7 +51,7 @@ stacy update --dry-run
 | Code | Meaning |
 |------|--------|
 | 0 | Success |
-| 1 | All updates failed |
+| 1 | A package failed to update, or its latest version could not be checked |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 

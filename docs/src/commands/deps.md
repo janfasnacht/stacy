@@ -48,7 +48,8 @@ stacy deps --flat main.do
 | Code | Meaning |
 |------|--------|
 | 0 | Analysis complete |
-| 3 | Script not found |
+| 1 | Circular dependencies detected |
+| 3 | Script not found, or a dependency is missing |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 

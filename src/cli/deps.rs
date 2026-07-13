@@ -41,12 +41,13 @@ pub fn execute(args: &DepsArgs) -> Result<()> {
             has_missing: true,
             circular_count: 0,
             missing_count: 1,
+            status: "error".to_string(),
         };
 
         match format {
             OutputFormat::Json => {
                 println!(
-                    r#"{{"error": "Script not found: {}"}}"#,
+                    r#"{{"status": "error", "error": "Script not found: {}"}}"#,
                     args.script.display()
                 );
             }
@@ -59,6 +60,10 @@ pub fn execute(args: &DepsArgs) -> Result<()> {
     // Analyze dependencies
     let analysis = analyze_dependencies(&args.script)?;
 
+    // A missing or circular dependency means the graph could not be resolved:
+    // the analysis is incomplete, so it must not report success.
+    let incomplete = analysis.has_missing || analysis.has_circular;
+
     // Build output struct
     let output = DepsOutput {
         script: args.script.clone(),
@@ -67,11 +72,12 @@ pub fn execute(args: &DepsArgs) -> Result<()> {
         has_missing: analysis.has_missing,
         circular_count: analysis.circular_paths.len(),
         missing_count: analysis.missing_paths.len(),
+        status: if incomplete { "error" } else { "success" }.to_string(),
     };
 
     // Output result
     match format {
-        OutputFormat::Json => print_json_output(&analysis.tree, &args.script)?,
+        OutputFormat::Json => print_json_output(&analysis.tree, &args.script, &output.status)?,
         OutputFormat::Stata => println!("{}", output.to_stata()),
         OutputFormat::Human => {
             if args.flat {
@@ -84,10 +90,9 @@ pub fn execute(args: &DepsArgs) -> Result<()> {
             println!();
             print_summary(&analysis.tree);
 
-            // Warnings
             if analysis.has_circular {
                 println!();
-                eprintln!("Warning: Circular dependencies detected:");
+                eprintln!("Error: Circular dependencies detected:");
                 for path in &analysis.circular_paths {
                     eprintln!("  - {}", path.display());
                 }
@@ -95,12 +100,22 @@ pub fn execute(args: &DepsArgs) -> Result<()> {
 
             if analysis.has_missing {
                 println!();
-                eprintln!("Warning: Missing files:");
+                eprintln!("Error: Missing files:");
                 for path in &analysis.missing_paths {
                     eprintln!("  - {}", path.display());
                 }
             }
         }
+    }
+
+    // A missing file is a file error (3), matching a missing script above.
+    // A cycle is not a file error — the files are all there — so it maps to
+    // the generic failure code (1).
+    if analysis.has_missing {
+        std::process::exit(3);
+    }
+    if analysis.has_circular {
+        std::process::exit(1);
     }
 
     Ok(())
@@ -160,10 +175,11 @@ fn print_summary(tree: &DependencyTree) {
     }
 }
 
-fn print_json_output(tree: &DependencyTree, script: &std::path::Path) -> Result<()> {
+fn print_json_output(tree: &DependencyTree, script: &std::path::Path, status: &str) -> Result<()> {
     use serde_json::json;
 
     let output = json!({
+        "status": status,
         "script": script.display().to_string(),
         "dependencies": tree_to_json(tree),
         "summary": {

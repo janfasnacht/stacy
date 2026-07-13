@@ -53,8 +53,7 @@ stacy install estout
 | Code | Meaning |
 |------|--------|
 | 0 | Success |
-| 1 | Installation failed |
-| 3 | Package not found |
+| 1 | A package failed to install or failed checksum verification |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 

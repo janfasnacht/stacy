@@ -26,6 +26,7 @@ stacy outdated
 | Code | Meaning |
 |------|--------|
 | 0 | Success |
+| 1 | A package's latest version could not be checked |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 

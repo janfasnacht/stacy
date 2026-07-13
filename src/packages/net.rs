@@ -96,6 +96,21 @@ impl NetDownloader {
         })
     }
 
+    /// Get a package manifest without downloading its files
+    ///
+    /// Fetches and parses `{base_url}/{name}.pkg` only.
+    pub fn get_manifest(&self, name: &str, base_url: &str) -> Result<PackageManifest> {
+        let name = name.to_lowercase();
+        let base_url = if base_url.ends_with('/') {
+            base_url.to_string()
+        } else {
+            format!("{}/", base_url)
+        };
+
+        let pkg_content = self.download_text(&format!("{}{}.pkg", base_url, name))?;
+        parse_pkg_file(&pkg_content, &name)
+    }
+
     fn download_text(&self, url: &str) -> Result<String> {
         self.client.download_text(url)
     }

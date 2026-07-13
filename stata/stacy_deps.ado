@@ -20,6 +20,7 @@
         r(missing_count       ) - Number of missing files (scalar)
         r(unique_count        ) - Number of unique dependencies (scalar)
         r(script              ) - Path to analyzed script (local)
+        r(status              ) - 'success' or 'error' (local)
 */
 
 program define stacy_deps, rclass
@@ -75,6 +76,10 @@ program define stacy_deps, rclass
 
     if `"${stacy_script}"' != "" {
         return local script `"${stacy_script}"'
+    }
+
+    if `"${stacy_status}"' != "" {
+        return local status `"${stacy_status}"'
     }
 
     * Return failure if command failed

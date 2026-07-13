@@ -15,6 +15,7 @@
         REFRESH              - Recompute checksums from the packages installed in the global cache
 
     Returns:
+        r(failed              ) - Number of packages that could not be resolved (scalar)
         r(in_sync             ) - Whether lockfile is in sync (1=yes, 0=no) (scalar)
         r(package_count       ) - Number of packages in lockfile (scalar)
         r(updated             ) - Whether lockfile was updated (1=yes, 0=no) (scalar)
@@ -41,6 +42,11 @@ program define stacy_lock, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
+    capture confirm scalar stacy_failed
+    if _rc == 0 {
+        return scalar failed = scalar(stacy_failed)
+    }
+
     capture confirm scalar stacy_in_sync
     if _rc == 0 {
         return scalar in_sync = scalar(stacy_in_sync)

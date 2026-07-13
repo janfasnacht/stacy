@@ -216,7 +216,17 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
         })
         .collect();
 
+    // A skipped package is one the lockfile asks for and stacy could not
+    // install (unreachable source, bad repo, missing local path). The lockfile
+    // was not realised, so the command did not do its job.
+    let skipped_names: Vec<&str> = results
+        .iter()
+        .filter(|r| matches!(r.action, SyncAction::Skipped(_)))
+        .map(|r| r.name.as_str())
+        .collect();
+
     let failed_count = (failed_names.len() + mismatches.len()) as i32;
+    let integrity_failed = failed_count > 0;
 
     let mut problems: Vec<String> = mismatches.iter().map(|m| m.to_string()).collect();
     if !failed_names.is_empty() {
@@ -226,16 +236,18 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
             failed_names.join(", ")
         ));
     }
+    if !skipped_names.is_empty() {
+        problems.push(format!(
+            "{} package(s) failed to install: {}",
+            skipped_names.len(),
+            skipped_names.join(", ")
+        ));
+    }
 
-    let error_message: Option<String> = if !problems.is_empty() {
-        Some(problems.join("\n\n"))
-    } else if skipped_count > 0 && installed_count == 0 {
-        Some(format!(
-            "{} package(s) skipped, none installed",
-            skipped_count
-        ))
-    } else {
+    let error_message: Option<String> = if problems.is_empty() {
         None
+    } else {
+        Some(problems.join("\n\n"))
     };
 
     let output = InstallOutput {
@@ -260,10 +272,15 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
         OutputFormat::Human => print_sync_human_output(&results),
     }
 
-    if failed_count > 0 {
-        // Both kinds of failure — a source that disagrees with the pin, and a
-        // cached package that no longer hashes to it — are integrity failures.
-        return Err(Error::Integrity(error_message.unwrap()));
+    if let Some(msg) = error_message {
+        // A source that disagrees with the pin, and a cached package that no
+        // longer hashes to it, are integrity failures. A package stacy simply
+        // could not fetch is not: the lockfile just was not realised.
+        return Err(if integrity_failed {
+            Error::Integrity(msg)
+        } else {
+            Error::Config(msg)
+        });
     }
 
     Ok(())
@@ -409,7 +426,7 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
             }
             SyncAction::Skipped(reason) => {
                 println!(
-                    "  Skipping {} ({}): {}",
+                    "  x {} ({}) failed to install: {}",
                     result.name, result.version, reason
                 );
                 skipped.push(&result.name);
@@ -436,12 +453,23 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
             summary.push(format!("{} already installed", already.len()));
         }
         if !skipped.is_empty() {
-            summary.push(format!("{} skipped", skipped.len()));
+            summary.push(format!("{} failed", skipped.len()));
         }
+<<<<<<< HEAD
         if !mismatched.is_empty() {
             summary.push(format!("{} failed", mismatched.len()));
         }
         println!("Install complete: {}", summary.join(", "));
+||||||| parent of ce331be (fix: exit nonzero when a package command does not complete (#94))
+        println!("Install complete: {}", summary.join(", "));
+=======
+        let headline = if skipped.is_empty() {
+            "Install complete"
+        } else {
+            "Install incomplete"
+        };
+        println!("{}: {}", headline, summary.join(", "));
+>>>>>>> ce331be (fix: exit nonzero when a package command does not complete (#94))
     }
 
     // Checksum verification results

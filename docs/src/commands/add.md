@@ -54,7 +54,7 @@ stacy add --dev assert
 | Code | Meaning |
 |------|--------|
 | 0 | Success |
-| 1 | All packages failed to add |
+| 1 | A package failed to add |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 
