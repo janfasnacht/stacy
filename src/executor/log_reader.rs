@@ -157,6 +157,7 @@ pub enum StreamMode {
 /// emitting a trailing blank before the `end of do-file` trailer (which a
 /// stream, unlike post-hoc stripping, could not retract).
 struct CleanFilter {
+    echo: EchoFilter,
     seen_content: bool,
     pending_blank: bool,
     suppress: bool,
@@ -171,6 +172,7 @@ enum CleanAction {
 impl CleanFilter {
     fn new() -> Self {
         Self {
+            echo: EchoFilter::new(),
             seen_content: false,
             pending_blank: false,
             suppress: false,
@@ -189,7 +191,8 @@ impl CleanFilter {
             self.suppress = true;
             return CleanAction::Skip;
         }
-        if is_command_echo(trimmed) {
+        // Echo detection must see every line, in order — it is stateful.
+        if self.echo.is_echo(line) {
             return CleanAction::Skip;
         }
         if trimmed.is_empty() {
@@ -323,58 +326,227 @@ pub fn stream_log_to(
     Ok(())
 }
 
-/// Check if a trimmed line is a Stata command echo
+/// Width at which Stata wraps a log line (default `linesize`). A line this
+/// long was cut off, so the `> ` line after it continues it.
+const WRAP_WIDTH: usize = 79;
+
+/// A multi-line construct whose body lines Stata echoes as `  2. body`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Block {
+    /// `foreach`/`forvalues`/`while`/`if` — body ends when the braces balance
+    Braces,
+    /// `program [define] name` — body ends at `end`
+    Program,
+    /// `input` — the typed data lines end at `end`
+    Input,
+}
+
+/// Decides, line by line, which log lines are Stata echoing back what it was
+/// told to run — as opposed to results, which must survive.
 ///
-/// Matches:
-/// - `. command` — standard command echo
-/// - `.` — bare continuation dot
-/// - `  2. command` — numbered continuation inside loops/programs
-/// - `> continuation` — long command wrapping or `#delimit ;` continuation
-pub fn is_command_echo(trimmed: &str) -> bool {
-    // Standard: `. ` prefix or bare `.`
-    if trimmed.starts_with(". ") || trimmed == "." {
-        return true;
-    }
+/// Echoes cannot be recognised from a line's text alone, because results look
+/// like them: `list` numbers its rows `  1. | ... |` exactly as Stata numbers
+/// the body of a loop, `display "> x"` prints `> x`, and `display .` prints a
+/// bare `.`. What separates the two is *where* they can occur:
+///
+/// - A command echo is a `. ` prompt in column 0. Nothing else starts one.
+/// - A `> ` line continues the echo above it — but only if that echo was cut
+///   off at [`WRAP_WIDTH`], or `#delimit ;` is in force (which echoes every
+///   continuation line that way). Output wraps with `> ` too, so a `> ` line
+///   after *output* is output.
+/// - A numbered line is a body line of a block the previous echoes opened
+///   (a loop, a program, `input`). Outside a block, `  1. | ... |` is a result.
+///
+/// Feed it every line of the log in order, including blank ones.
+///
+/// Known limit: a result line that itself starts in column 0 with `. `
+/// (a value label such as `. missing` filling its column exactly) is
+/// indistinguishable from an echo and is still dropped.
+struct EchoFilter {
+    /// Text of the command echo being read, minus its prompt. Continuation
+    /// lines append to it; it is applied to the block state once complete.
+    pending: String,
+    /// Width of the previous line, if that line was part of an echo.
+    prev_echo_width: Option<usize>,
+    /// Block whose body Stata is currently echoing.
+    block: Option<Block>,
+    /// Open braces inside a [`Block::Braces`].
+    depth: usize,
+    /// `#delimit ;` in force: command echoes continue with `> ` at any width.
+    delimit_semi: bool,
+}
 
-    // Continuation lines: `> ` prefix from long commands or #delimit ; mode
-    if trimmed.starts_with("> ") {
-        return true;
-    }
-
-    // Numbered continuation: `2. `, `10. `, etc.
-    // Pattern: optional digits followed by `. ` or just digits followed by `.`
-    let bytes = trimmed.as_bytes();
-    let mut i = 0;
-    // Must start with a digit
-    if i >= bytes.len() || !bytes[i].is_ascii_digit() {
-        return false;
-    }
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        i += 1;
-    }
-    // Must be followed by `. ` or be `N.` at end of line
-    if i < bytes.len() && bytes[i] == b'.' {
-        // `N.` (end) or `N. ` (continuation)
-        if i + 1 == bytes.len() || bytes[i + 1] == b' ' {
-            return true;
+impl EchoFilter {
+    fn new() -> Self {
+        Self {
+            pending: String::new(),
+            prev_echo_width: None,
+            block: None,
+            depth: 0,
+            delimit_semi: false,
         }
     }
 
-    false
+    /// Is `line` (one log line, trailing newline optional) a command echo?
+    fn is_echo(&mut self, line: &str) -> bool {
+        let line = line.trim_end_matches('\n').trim_end_matches('\r');
+
+        // Continuation of the echo we are already reading.
+        if let Some(rest) = line.strip_prefix("> ") {
+            if self.continues_echo() {
+                self.pending.push_str(rest);
+                self.prev_echo_width = Some(line.chars().count());
+                return true;
+            }
+        }
+
+        // Any other line completes the echo we were reading.
+        self.finish_pending();
+
+        // A command echo: `. ` prompt in column 0. A blank line in the script
+        // echoes as `. ` (prompt, nothing after); a bare `.` with no trailing
+        // space is a missing value that a command printed.
+        if let Some(rest) = line.strip_prefix(". ") {
+            self.pending = rest.to_string();
+            self.prev_echo_width = Some(line.chars().count());
+            return true;
+        }
+
+        // A numbered body line, but only while a block is open — Stata echoes
+        // a whole block before running it, so nothing else can appear here.
+        if self.block.is_some() {
+            if let Some(rest) = numbered_body(line) {
+                self.pending = rest.to_string();
+                self.prev_echo_width = Some(line.chars().count());
+                return true;
+            }
+        }
+
+        self.prev_echo_width = None;
+
+        // A line that is not an echo, inside what we read as a loop or program
+        // body, means we misread the opening line (`local brace {`). Close the
+        // block so one bad guess cannot swallow the rest of the log. `input`
+        // is exempt: it prints a variable header above the data lines.
+        if matches!(self.block, Some(Block::Braces) | Some(Block::Program)) {
+            self.block = None;
+            self.depth = 0;
+        }
+
+        false
+    }
+
+    /// Can a `> ` line continue the previous line?
+    fn continues_echo(&self) -> bool {
+        match self.prev_echo_width {
+            Some(width) => self.delimit_semi || width >= WRAP_WIDTH,
+            None => false,
+        }
+    }
+
+    /// Apply the finished command echo to the block and `#delimit` state.
+    fn finish_pending(&mut self) {
+        let pending = std::mem::take(&mut self.pending);
+        let cmd = pending.trim();
+        if cmd.is_empty() {
+            return;
+        }
+
+        if let Some(rest) = cmd.strip_prefix("#delimit") {
+            self.delimit_semi = rest.trim_start().starts_with(';');
+            return;
+        }
+
+        match self.block {
+            Some(Block::Braces) => {
+                if cmd.starts_with('}') {
+                    self.depth = self.depth.saturating_sub(1);
+                }
+                if cmd.ends_with('{') {
+                    self.depth += 1;
+                }
+                if self.depth == 0 {
+                    self.block = None;
+                }
+            }
+            Some(Block::Program) | Some(Block::Input) => {
+                if cmd == "end" {
+                    self.block = None;
+                }
+            }
+            None => {
+                // Stata requires the opening brace to end the line.
+                if cmd.ends_with('{') {
+                    self.block = Some(Block::Braces);
+                    self.depth = 1;
+                } else if let Some(block) = opens_block(cmd) {
+                    self.block = Some(block);
+                }
+            }
+        }
+    }
+}
+
+/// Does `cmd` open a body that Stata echoes and terminates with `end`?
+///
+/// Unrecognised spellings only mean the body is shown, never that a result is
+/// dropped: a body line that arrives without an open block is treated as
+/// output, and [`EchoFilter::is_echo`] closes a block it opened wrongly as
+/// soon as output appears.
+fn opens_block(cmd: &str) -> Option<Block> {
+    // Prefix commands run the command that follows: `capture program drop x`
+    // must not read as a program definition.
+    let mut words = cmd.split_whitespace().skip_while(|w| {
+        matches!(
+            *w,
+            "capture" | "cap" | "quietly" | "qui" | "noisily" | "noi"
+        )
+    });
+
+    match words.next()? {
+        "program" => match words.next().unwrap_or("define") {
+            "drop" | "dir" | "list" => None,
+            _ => Some(Block::Program),
+        },
+        "input" => Some(Block::Input),
+        _ => None,
+    }
+}
+
+/// Split a numbered body line (`  2. display x`) into its text, or `None`.
+///
+/// Stata right-aligns the number, then writes `. ` and the script line as
+/// written — including the script's own indentation.
+fn numbered_body(line: &str) -> Option<&str> {
+    let rest = line.trim_start_matches(' ');
+    let digits = rest.len() - rest.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    if digits == 0 {
+        return None;
+    }
+    let after = &rest[digits..];
+    // `N. body`, or `N.` alone (the script line was blank).
+    match after.strip_prefix('.') {
+        Some("") => Some(""),
+        Some(body) => body.strip_prefix(' '),
+        None => None,
+    }
 }
 
 /// Strip Stata boilerplate from log output, returning only substantive content
 ///
 /// Removes:
-/// - Lines starting with `. ` (command echo — Stata repeating what it was told)
-/// - Lines that are exactly `.` (continuation of command echo)
-/// - Numbered continuation lines inside loops/programs (e.g., `  2. display x`)
+/// - Command echoes: the `. command` prompt, its `> ` continuations, and the
+///   numbered body lines of loops, programs and `input` (see [`EchoFilter`])
 /// - Leading blank lines
 /// - `end of do-file` marker and everything after it (including `r(CODE);`)
 /// - Collapses consecutive blank lines to a single blank line
 /// - Trims trailing whitespace
+///
+/// Results are kept, including the ones that look like echoes: `list` rows,
+/// the `.` row of `tabulate, missing`, and wrapped output continued with `> `.
 pub fn strip_boilerplate(log_content: &str) -> String {
     let mut lines: Vec<&str> = Vec::new();
+    let mut echo = EchoFilter::new();
 
     for line in log_content.lines() {
         // Stop at end-of-do-file marker
@@ -383,8 +555,7 @@ pub fn strip_boilerplate(log_content: &str) -> String {
         }
 
         // Skip command echo lines
-        let trimmed = line.trim();
-        if is_command_echo(trimmed) {
+        if echo.is_echo(line) {
             continue;
         }
 
@@ -583,36 +754,267 @@ end of do-file\n";
         assert_eq!(result, "3");
     }
 
-    #[test]
-    fn test_is_command_echo_standard() {
-        assert!(is_command_echo(". display 1"));
-        assert!(is_command_echo("."));
-        assert!(is_command_echo(". foreach x of numlist 1/3 {"));
+    // =========================================================================
+    // EchoFilter tests
+    //
+    // The log excerpts below are copied from real StataNow 19 batch logs.
+    // =========================================================================
+
+    /// Which lines of `log` the filter calls echoes.
+    fn echoes(log: &str) -> Vec<&str> {
+        let mut filter = EchoFilter::new();
+        log.lines()
+            .filter(|line| filter.is_echo(line))
+            .collect::<Vec<_>>()
+    }
+
+    /// Which lines of `log` the filter keeps.
+    fn kept(log: &str) -> Vec<&str> {
+        let mut filter = EchoFilter::new();
+        log.lines()
+            .filter(|line| !filter.is_echo(line))
+            .collect::<Vec<_>>()
+    }
+
+    /// Pad `prefix` out to the width at which Stata wraps a log line.
+    fn at_wrap_width(prefix: &str) -> String {
+        let mut line = prefix.to_string();
+        while line.chars().count() < WRAP_WIDTH {
+            line.push('x');
+        }
+        line
     }
 
     #[test]
-    fn test_is_command_echo_numbered() {
-        assert!(is_command_echo("2. display `x'"));
-        assert!(is_command_echo("10. end"));
-        assert!(is_command_echo("3."));
+    fn test_echo_at_column_zero_is_stripped() {
+        // The last echo is the `. ` prompt a blank script line produces.
+        let log = ". sysuse auto, clear\n(1978 automobile data)\n. display 1+1\n2\n. \n";
+        assert_eq!(kept(log), vec!["(1978 automobile data)", "2"]);
     }
 
     #[test]
-    fn test_is_command_echo_continuation() {
-        assert!(is_command_echo("> /\") + 1, .), \"\", .)"));
-        assert!(is_command_echo("> )' _n\""));
-        assert!(is_command_echo("> local x = 1"));
+    fn test_keeps_list_rows() {
+        // Every data row of `list` is numbered exactly like a loop body.
+        let log = "\
+. list make price mpg in 1/3
+
+     +-----------------------------+
+     | make            price   mpg |
+     |-----------------------------|
+  1. | AMC Concord     4,099    22 |
+  2. | AMC Pacer       4,749    17 |
+  3. | AMC Spirit      3,799    22 |
+     +-----------------------------+
+";
+        assert_eq!(echoes(log), vec![". list make price mpg in 1/3"]);
+        assert!(kept(log).contains(&"  1. | AMC Concord     4,099    22 |"));
+        assert!(kept(log).contains(&"  3. | AMC Spirit      3,799    22 |"));
     }
 
     #[test]
-    fn test_is_command_echo_not_echo() {
-        assert!(!is_command_echo("hello world"));
-        assert!(!is_command_echo("2"));
-        assert!(!is_command_echo("r(199);"));
-        assert!(!is_command_echo(""));
-        assert!(!is_command_echo("123"));
-        // A line like "3.14" is not command echo (no space after dot)
-        assert!(!is_command_echo("3.14"));
+    fn test_keeps_borderless_list_rows() {
+        // `list, clean noheader` puts the first row directly under the echo,
+        // and its rows carry no `|` to key off.
+        let log = "\
+. list make mpg in 1/2, clean noheader
+  1.   AMC Concord    22
+  2.   AMC Pacer      17
+";
+        assert_eq!(echoes(log), vec![". list make mpg in 1/2, clean noheader"]);
+        assert_eq!(
+            kept(log),
+            vec!["  1.   AMC Concord    22", "  2.   AMC Pacer      17"]
+        );
+    }
+
+    #[test]
+    fn test_keeps_tabulate_missing_row() {
+        // The `.` category must survive, or the rows stop summing to Total.
+        let log = "\
+. tabulate rep78, missing
+
+     Repair |
+record 1978 |      Freq.     Percent        Cum.
+------------+-----------------------------------
+          5 |         11       14.86       93.24
+          . |          5        6.76      100.00
+------------+-----------------------------------
+      Total |         74      100.00
+";
+        assert!(kept(log).contains(&"          . |          5        6.76      100.00"));
+    }
+
+    #[test]
+    fn test_keeps_echo_shaped_display_output() {
+        let log = "\
+. display \"1. step\"
+1. step
+. display \"> x\"
+> x
+. display .
+.
+";
+        assert_eq!(kept(log), vec!["1. step", "> x", "."]);
+    }
+
+    #[test]
+    fn test_keeps_wrapped_output() {
+        // Output wraps with the same `> ` marker as a wrapped echo; the marker
+        // continues whatever came before it.
+        let output = at_wrap_width("a very long line of output that runs past ");
+        let log = format!(". display \"...\"\n{}\n> and its tail\n", output);
+
+        assert_eq!(kept(&log), vec![output.as_str(), "> and its tail"]);
+    }
+
+    #[test]
+    fn test_strips_wrapped_command_echo() {
+        let echo = at_wrap_width(". regress price mpg weight foreign headroom ");
+        let log = format!("{}\n> _ratio\n\n      Source |       SS\n", echo);
+
+        assert_eq!(echoes(&log), vec![echo.as_str(), "> _ratio"]);
+    }
+
+    #[test]
+    fn test_strips_delimit_semicolon_continuation() {
+        // Under `#delimit ;` every continuation line is echoed with `> `,
+        // whatever its width.
+        let log = "\
+. #delimit ;
+delimiter now ;
+. display
+>    \"delimit continuation\"
+>    ;
+delimit continuation
+. #delimit cr
+delimiter now cr
+. display \"> x\"
+> x
+";
+        assert_eq!(
+            kept(log),
+            vec![
+                "delimiter now ;",
+                "delimit continuation",
+                "delimiter now cr",
+                "> x",
+            ]
+        );
+    }
+
+    #[test]
+    fn test_strips_loop_body() {
+        let log = "\
+. forvalues i = 1/2 {
+  2.     display `i'
+  3. }
+1
+2
+";
+        assert_eq!(kept(log), vec!["1", "2"]);
+    }
+
+    #[test]
+    fn test_strips_nested_loop_body() {
+        let log = "\
+. forvalues i = 1/2 {
+  2.     foreach v of varlist price mpg {
+  3.         display \"`i' `v'\"
+  4.     }
+  5. }
+1 price
+";
+        assert_eq!(kept(log), vec!["1 price"]);
+    }
+
+    #[test]
+    fn test_strips_program_body() {
+        let log = "\
+. program define myprog
+  1.     display \"in prog\"
+  2. end
+
+. myprog
+in prog
+";
+        assert_eq!(kept(log), vec!["", "in prog"]);
+    }
+
+    #[test]
+    fn test_program_drop_does_not_open_a_block() {
+        let log = "\
+. capture program drop myprog
+. list make in 1/1
+     +-------------+
+  1. | AMC Concord |
+     +-------------+
+";
+        assert!(kept(log).contains(&"  1. | AMC Concord |"));
+    }
+
+    #[test]
+    fn test_strips_input_block() {
+        // `input` echoes the typed data lines, but prints a header between the
+        // command and the first of them.
+        let log = "\
+. input x y
+
+             x          y
+  1. 1 2
+  2. 3 4
+  3. end
+";
+        assert_eq!(kept(log), vec!["", "             x          y"]);
+    }
+
+    #[test]
+    fn test_misread_block_opener_recovers() {
+        // `local brace {` ends in a brace but opens nothing. The rows below
+        // must not be swallowed by a block that never existed.
+        let log = "\
+. local brace {
+. list make in 1/2
+
+     +-------------+
+  1. | AMC Concord |
+  2. | AMC Pacer   |
+     +-------------+
+";
+        assert!(kept(log).contains(&"  1. | AMC Concord |"));
+        assert!(kept(log).contains(&"  2. | AMC Pacer   |"));
+    }
+
+    #[test]
+    fn test_strip_boilerplate_keeps_list_rows() {
+        let log = concat!(
+            ". sysuse auto, clear\n",
+            "(1978 automobile data)\n",
+            "\n",
+            ". list make mpg in 1/2\n",
+            "\n",
+            "     +-------------------+\n",
+            "     | make          mpg |\n",
+            "     |-------------------|\n",
+            "  1. | AMC Concord    22 |\n",
+            "  2. | AMC Pacer      17 |\n",
+            "     +-------------------+\n",
+            "\n",
+            ". \n",
+            "end of do-file\n",
+        );
+        assert_eq!(
+            strip_boilerplate(log),
+            concat!(
+                "(1978 automobile data)\n",
+                "\n",
+                "     +-------------------+\n",
+                "     | make          mpg |\n",
+                "     |-------------------|\n",
+                "  1. | AMC Concord    22 |\n",
+                "  2. | AMC Pacer      17 |\n",
+                "     +-------------------+",
+            )
+        );
     }
 
     // =========================================================================
@@ -678,6 +1080,48 @@ end of do-file\n";
 
         let out = String::from_utf8(handle.join().unwrap()).unwrap();
         assert_eq!(out, "1\n\n2\n");
+    }
+
+    #[test]
+    fn test_stream_clean_keeps_result_rows() {
+        // The streamed table must carry its data rows, not just its frame.
+        let dir = tempfile::TempDir::new().unwrap();
+        let log = dir.path().join("run.log");
+        std::fs::write(
+            &log,
+            concat!(
+                ". list make mpg in 1/2\n",
+                "\n",
+                "     +-------------------+\n",
+                "     | make          mpg |\n",
+                "     |-------------------|\n",
+                "  1. | AMC Concord    22 |\n",
+                "  2. | AMC Pacer      17 |\n",
+                "     +-------------------+\n",
+                "\n",
+                ". \n",
+                "end of do-file\n",
+                "\n",
+                "r(0);\n",
+            ),
+        )
+        .unwrap();
+
+        let stop = Arc::new(AtomicBool::new(true));
+        let handle = stream_in_thread(log, StreamMode::Clean, stop);
+
+        let out = String::from_utf8(handle.join().unwrap()).unwrap();
+        assert_eq!(
+            out,
+            concat!(
+                "     +-------------------+\n",
+                "     | make          mpg |\n",
+                "     |-------------------|\n",
+                "  1. | AMC Concord    22 |\n",
+                "  2. | AMC Pacer      17 |\n",
+                "     +-------------------+\n",
+            )
+        );
     }
 
     #[test]

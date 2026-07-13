@@ -149,7 +149,7 @@ The cache is project-local (`.stacy/cache/build.json`) and opt-in. `--force` re-
 
 ### Real-time Output
 
-Program output streams to stdout live by default -- boilerplate-stripped (command echoes removed, blank runs collapsed), both in a terminal and when piped. Use `-v` (verbose) to stream the raw, unstripped log instead:
+Program output streams to stdout live by default -- boilerplate-stripped (command echoes removed, blank runs collapsed), both in a terminal and when piped. Removed are the `. command` prompt, its `> ` continuations, and the body lines of loops, programs and `input`. Results are kept as Stata printed them, including the ones that are shaped like echoes: `list` rows (`  1. | ... |`), the `.` row of `tabulate, missing`, and output that wraps onto a `> ` line. Use `-v` (verbose) to stream the raw, unstripped log instead:
 
 ```bash
 stacy run -v long_analysis.do
