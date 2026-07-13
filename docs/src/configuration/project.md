@@ -134,6 +134,24 @@ analyze = { script = "src/02_analyze.do", description = "Main estimates" }
 
 ## Important Notes
 
+### Unknown Keys Are Rejected
+
+Every key outside `[scripts]` (where the keys are your task names) must be one
+stacy knows. A key it does not know is an error, not a shrug:
+
+```
+$ stacy lock
+Error: Failed to parse stacy.toml: TOML parse error at line 4, column 1
+  |
+4 | [dependencies]
+  | ^^^^^^^^^^^^^^
+unknown field `dependencies`, expected one of `project`, `run`, `paths`, `packages`, `scripts`
+hint: declare these under [packages.dependencies]
+```
+
+Dependencies declared under the wrong key used to be dropped without a word, and
+`stacy lock` then reported success on zero packages.
+
 ### Stata Binary
 
 stacy auto-detects Stata in common locations. If detection fails, configure manually:

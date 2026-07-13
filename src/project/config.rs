@@ -9,8 +9,12 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 
 /// Project configuration loaded from stacy.toml
+///
+/// Unknown keys are rejected (#100). A misplaced key — `[dependencies]` instead
+/// of `[packages.dependencies]` — used to be dropped without a word, and `lock`
+/// and `install` then reported success on zero packages.
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct Config {
     /// Project-level settings
     pub project: ProjectSection,
@@ -26,7 +30,7 @@ pub struct Config {
 
 /// Path settings for local ado directories
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PathsSection {
     /// Local ado directories to prepend to S_ADO (relative to project root)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -35,7 +39,7 @@ pub struct PathsSection {
 
 /// Project-level settings (committed to version control)
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct ProjectSection {
     /// Project name (for display purposes)
     pub name: Option<String>,
@@ -49,7 +53,7 @@ pub struct ProjectSection {
 
 /// Execution settings for `stacy run`
 #[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct RunSection {
     /// Directory for log files (relative to project root)
     pub log_dir: PathBuf,
@@ -143,7 +147,7 @@ impl std::fmt::Display for DependencyGroup {
 
 /// Package management settings
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct PackagesSection {
     /// Production dependencies: package_name -> source spec
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -242,6 +246,9 @@ impl PackagesSection {
 }
 
 /// Task/script definitions for `stacy task` command
+///
+/// Open by design: every key is a user-chosen task name, so `deny_unknown_fields`
+/// does not apply here (and serde does not support it alongside `flatten`).
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ScriptsSection {
@@ -340,13 +347,42 @@ pub fn load_config(project_root: &Path) -> Result<Option<Config>> {
     Ok(Some(config))
 }
 
-/// Format TOML parse error with line/column information
+/// Format a TOML parse error: the toml crate renders line, column and the
+/// offending snippet. Unknown keys get an extra line saying where the key
+/// actually belongs, when we can tell.
 fn format_toml_error(err: &toml::de::Error) -> String {
-    if let Some(span) = err.span() {
-        format!("at position {}-{}: {}", span.start, span.end, err.message())
-    } else {
-        err.message().to_string()
+    let mut msg = err.to_string();
+    if let Some(hint) = unknown_key_hint(err.message()) {
+        msg.push('\n');
+        msg.push_str(&hint);
     }
+    msg
+}
+
+/// Point a misplaced top-level dependency key at the section it belongs in.
+///
+/// serde's message ("unknown field `dependencies`, expected one of `project`,
+/// ...") names the key; this adds the fix.
+fn unknown_key_hint(message: &str) -> Option<String> {
+    let key = message
+        .split("unknown field `")
+        .nth(1)?
+        .split('`')
+        .next()?
+        .to_string();
+
+    // Only top-level keys can be confused with the [packages.*] sections.
+    if !message.contains("`project`") {
+        return None;
+    }
+
+    let section = match key.as_str() {
+        "dependencies" => "[packages.dependencies]",
+        "dev" => "[packages.dev]",
+        "test" => "[packages.test]",
+        _ => return None,
+    };
+    Some(format!("hint: declare these under {}", section))
 }
 
 /// Validate configuration values.
@@ -506,6 +542,93 @@ show_progress = false
         let err = result.unwrap_err();
         let err_msg = format!("{}", err);
         assert!(err_msg.contains("Failed to parse stacy.toml"));
+    }
+
+    #[test]
+    fn test_misplaced_dependencies_section_is_rejected() {
+        // #100: `[dependencies]` instead of `[packages.dependencies]` used to be
+        // dropped silently, and `lock`/`install` then reported success on zero
+        // packages.
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("stacy.toml"),
+            "[project]\nname = \"t\"\n\n[dependencies]\nestout = \"ssc\"\n",
+        )
+        .unwrap();
+
+        let err = load_config(temp.path()).unwrap_err().to_string();
+        assert!(
+            err.contains("dependencies"),
+            "error must name the offending key: {}",
+            err
+        );
+        assert!(
+            err.contains("[packages.dependencies]"),
+            "error must say where the key belongs: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_unknown_key_in_run_section_is_rejected() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("stacy.toml"),
+            "[run]\nlog_dirs = \"logs\"\n",
+        )
+        .unwrap();
+
+        let err = load_config(temp.path()).unwrap_err().to_string();
+        assert!(
+            err.contains("log_dirs"),
+            "error must name the offending key: {}",
+            err
+        );
+        assert!(
+            err.contains("log_dir"),
+            "error should list the valid keys: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_unknown_key_in_packages_section_is_rejected() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("stacy.toml"),
+            "[packages.deps]\nestout = \"ssc\"\n",
+        )
+        .unwrap();
+
+        let err = load_config(temp.path()).unwrap_err().to_string();
+        assert!(err.contains("deps"), "error must name the key: {}", err);
+    }
+
+    #[test]
+    fn test_unknown_key_in_project_section_is_rejected() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("stacy.toml"),
+            "[project]\nnaem = \"typo\"\n",
+        )
+        .unwrap();
+
+        let err = load_config(temp.path()).unwrap_err().to_string();
+        assert!(err.contains("naem"), "error must name the key: {}", err);
+    }
+
+    #[test]
+    fn test_task_names_are_not_unknown_keys() {
+        // [scripts] is open by design — task names are user-chosen.
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("stacy.toml"),
+            "[scripts]\nanything_goes = \"src/x.do\"\n",
+        )
+        .unwrap();
+
+        let config = load_config(temp.path()).unwrap().unwrap();
+        assert!(config.scripts.tasks.contains_key("anything_goes"));
     }
 
     #[test]
