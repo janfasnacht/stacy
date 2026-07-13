@@ -13,4 +13,9 @@ ado_dir = "ado"
 # Define a simple task for testing stacy_task
 [scripts.test-task]
 description = "A simple test task"
-scripts = ["scripts/hello.do"]
+script = "scripts/hello.do"
+
+# Task whose script output would break the result channel if it leaked (#84)
+[scripts.noisy-task]
+description = "Prints output that must not reach --format stata stdout"
+script = "scripts/noisy.do"
