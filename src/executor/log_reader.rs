@@ -341,33 +341,54 @@ enum Block {
     Input,
 }
 
+/// Notice `#delimit` prints. It is the one output line Stata does not follow
+/// with a blank line, so a command echo may come directly after it.
+const DELIMIT_NOTICE: &str = "delimiter now";
+
+/// Where the previous log line leaves us: can a command echo start here?
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Prev {
+    /// Start of log, a blank line, or an echo — Stata may echo a command next.
+    Boundary,
+    /// Output of the command now running. Its next line is more output.
+    Output,
+}
+
 /// Decides, line by line, which log lines are Stata echoing back what it was
 /// told to run — as opposed to results, which must survive.
 ///
 /// Echoes cannot be recognised from a line's text alone, because results look
 /// like them: `list` numbers its rows `  1. | ... |` exactly as Stata numbers
-/// the body of a loop, `display "> x"` prints `> x`, and `display .` prints a
-/// bare `.`. What separates the two is *where* they can occur:
+/// the body of a loop, `display "> x"` prints `> x`, `display .` prints a bare
+/// `.`, and a `tabulate` value label like `. not reported` fills column 0 just
+/// as a prompt does. What separates the two is *where* they can occur:
 ///
-/// - A command echo is a `. ` prompt in column 0. Nothing else starts one.
+/// - A command echo is a `. ` prompt in column 0 **at a command boundary** —
+///   the start of the log, after a blank line, or after another echo. Stata
+///   ends every command's output with a blank line before echoing the next, so
+///   a `. ` line in the middle of a command's output is that command's output.
+///   (`#delimit` is the one exception: its `delimiter now` notice gets no blank
+///   line after it, so it leaves the boundary open.)
 /// - A `> ` line continues the echo above it — but only if that echo was cut
-///   off at [`WRAP_WIDTH`], or `#delimit ;` is in force (which echoes every
-///   continuation line that way). Output wraps with `> ` too, so a `> ` line
-///   after *output* is output.
+///   off at [`WRAP_WIDTH`], or `#delimit ;` is in force and no `;` has ended
+///   the echo yet. Output wraps with `> ` too, so a `> ` line after *output*,
+///   or after a finished echo, is output.
 /// - A numbered line is a body line of a block the previous echoes opened
 ///   (a loop, a program, `input`). Outside a block, `  1. | ... |` is a result.
 ///
 /// Feed it every line of the log in order, including blank ones.
 ///
-/// Known limit: a result line that itself starts in column 0 with `. `
-/// (a value label such as `. missing` filling its column exactly) is
-/// indistinguishable from an echo and is still dropped.
+/// Every rule is written so that a wrong guess leaks an echo into the output
+/// rather than dropping a result: a leaked echo is noise, a dropped result is
+/// a wrong answer the user cannot see is wrong.
 struct EchoFilter {
     /// Text of the command echo being read, minus its prompt. Continuation
     /// lines append to it; it is applied to the block state once complete.
     pending: String,
     /// Width of the previous line, if that line was part of an echo.
     prev_echo_width: Option<usize>,
+    /// What the previous line was, for the command-boundary rule.
+    prev: Prev,
     /// Block whose body Stata is currently echoing.
     block: Option<Block>,
     /// Open braces inside a [`Block::Braces`].
@@ -381,6 +402,7 @@ impl EchoFilter {
         Self {
             pending: String::new(),
             prev_echo_width: None,
+            prev: Prev::Boundary,
             block: None,
             depth: 0,
             delimit_semi: false,
@@ -396,20 +418,33 @@ impl EchoFilter {
             if self.continues_echo() {
                 self.pending.push_str(rest);
                 self.prev_echo_width = Some(line.chars().count());
+                self.prev = Prev::Boundary;
                 return true;
             }
         }
 
-        // Any other line completes the echo we were reading.
-        self.finish_pending();
+        // Any other line completes the echo we were reading. A `#delimit` echo
+        // is followed immediately by its notice, so this fires on that line.
+        let notice_due = self.finish_pending();
 
-        // A command echo: `. ` prompt in column 0. A blank line in the script
-        // echoes as `. ` (prompt, nothing after); a bare `.` with no trailing
-        // space is a missing value that a command printed.
-        if let Some(rest) = line.strip_prefix(". ") {
-            self.pending = rest.to_string();
-            self.prev_echo_width = Some(line.chars().count());
-            return true;
+        // The `delimiter now ...` notice. Printed with no blank line after it,
+        // so it must not close the command boundary the way output does.
+        if notice_due && line.trim_start().starts_with(DELIMIT_NOTICE) {
+            self.prev_echo_width = None;
+            self.prev = Prev::Boundary;
+            return false;
+        }
+
+        // A command echo: `. ` prompt in column 0, at a command boundary. A
+        // blank line in the script echoes as `. ` (prompt, nothing after); a
+        // bare `.` with no trailing space is a missing value a command printed.
+        if self.prev == Prev::Boundary {
+            if let Some(rest) = line.strip_prefix(". ") {
+                self.pending = rest.to_string();
+                self.prev_echo_width = Some(line.chars().count());
+                self.prev = Prev::Boundary;
+                return true;
+            }
         }
 
         // A numbered body line, but only while a block is open — Stata echoes
@@ -418,11 +453,19 @@ impl EchoFilter {
             if let Some(rest) = numbered_body(line) {
                 self.pending = rest.to_string();
                 self.prev_echo_width = Some(line.chars().count());
+                self.prev = Prev::Boundary;
                 return true;
             }
         }
 
         self.prev_echo_width = None;
+        // A blank line ends the running command's output and opens the boundary
+        // the next echo needs; anything else is that command's output.
+        self.prev = if line.trim().is_empty() {
+            Prev::Boundary
+        } else {
+            Prev::Output
+        };
 
         // A line that is not an echo, inside what we read as a loop or program
         // body, means we misread the opening line (`local brace {`). Close the
@@ -439,22 +482,33 @@ impl EchoFilter {
     /// Can a `> ` line continue the previous line?
     fn continues_echo(&self) -> bool {
         match self.prev_echo_width {
-            Some(width) => self.delimit_semi || width >= WRAP_WIDTH,
+            // Under `#delimit ;` an echo continues with `> ` at any width, but
+            // only until a `;` ends it — the command's output comes next, and
+            // it may itself start with `> ` (`display "> x";`).
+            Some(width) => {
+                width >= WRAP_WIDTH || (self.delimit_semi && !self.pending_is_terminated())
+            }
             None => false,
         }
     }
 
+    /// Under `#delimit ;`, has a `;` closed the echo being read?
+    fn pending_is_terminated(&self) -> bool {
+        self.pending.trim_end().ends_with(';')
+    }
+
     /// Apply the finished command echo to the block and `#delimit` state.
-    fn finish_pending(&mut self) {
+    /// Returns whether that command was a `#delimit` (whose notice comes next).
+    fn finish_pending(&mut self) -> bool {
         let pending = std::mem::take(&mut self.pending);
         let cmd = pending.trim();
         if cmd.is_empty() {
-            return;
+            return false;
         }
 
         if let Some(rest) = cmd.strip_prefix("#delimit") {
             self.delimit_semi = rest.trim_start().starts_with(';');
-            return;
+            return true;
         }
 
         match self.block {
@@ -484,6 +538,8 @@ impl EchoFilter {
                 }
             }
         }
+
+        false
     }
 }
 
@@ -787,9 +843,39 @@ end of do-file\n";
 
     #[test]
     fn test_echo_at_column_zero_is_stripped() {
-        // The last echo is the `. ` prompt a blank script line produces.
-        let log = ". sysuse auto, clear\n(1978 automobile data)\n. display 1+1\n2\n. \n";
-        assert_eq!(kept(log), vec!["(1978 automobile data)", "2"]);
+        // The last echo is the `. ` prompt a blank script line produces. Stata
+        // ends each command's output with a blank line before the next echo.
+        let log = ". sysuse auto, clear\n(1978 automobile data)\n\n. display 1+1\n2\n\n. \n";
+        assert_eq!(kept(log), vec!["(1978 automobile data)", "", "2", ""]);
+    }
+
+    #[test]
+    fn test_keeps_tabulate_label_starting_with_dot() {
+        // A value label beginning with `. ` lands in column 0 when it is the
+        // widest label in the column — but it is inside the table's output, not
+        // at a command boundary, so it is a result. Dropping it left the rows
+        // not summing to the printed Total.
+        let log = "\
+. tabulate rep78
+
+ Repair record |
+          1978 |      Freq.     Percent        Cum.
+---------------+-----------------------------------
+. not reported |          2        2.90        2.90
+             b |          8       11.59       14.49
+---------------+-----------------------------------
+         Total |         69      100.00
+";
+        assert_eq!(echoes(log), vec![". tabulate rep78"]);
+        assert!(kept(log).contains(&". not reported |          2        2.90        2.90"));
+    }
+
+    #[test]
+    fn test_keeps_output_line_starting_with_dot_prompt() {
+        // Any output line in column 0 that happens to start with `. ` survives:
+        // an echo can only begin at a command boundary.
+        let log = ". list nm\n\n     +----+\n. x  |\n     +----+\n";
+        assert!(kept(log).contains(&". x  |"));
     }
 
     #[test]
@@ -849,12 +935,14 @@ record 1978 |      Freq.     Percent        Cum.
         let log = "\
 . display \"1. step\"
 1. step
+
 . display \"> x\"
 > x
+
 . display .
 .
 ";
-        assert_eq!(kept(log), vec!["1. step", "> x", "."]);
+        assert_eq!(kept(log), vec!["1. step", "", "> x", "", "."]);
     }
 
     #[test]
@@ -878,7 +966,8 @@ record 1978 |      Freq.     Percent        Cum.
     #[test]
     fn test_strips_delimit_semicolon_continuation() {
         // Under `#delimit ;` every continuation line is echoed with `> `,
-        // whatever its width.
+        // whatever its width. The `delimiter now` notice is the one output line
+        // Stata does not follow with a blank, so the echo after it still counts.
         let log = "\
 . #delimit ;
 delimiter now ;
@@ -886,6 +975,7 @@ delimiter now ;
 >    \"delimit continuation\"
 >    ;
 delimit continuation
+
 . #delimit cr
 delimiter now cr
 . display \"> x\"
@@ -896,10 +986,36 @@ delimiter now cr
             vec![
                 "delimiter now ;",
                 "delimit continuation",
+                "",
                 "delimiter now cr",
                 "> x",
             ]
         );
+    }
+
+    #[test]
+    fn test_keeps_output_starting_with_gt_under_delimit_semicolon() {
+        // The `;` ends the echo, so the `> x` below it is the command's output,
+        // not a continuation of the echo.
+        let log = "\
+. #delimit ;
+delimiter now ;
+. display \"> x\";
+> x
+
+. display \"keep me\";
+keep me
+";
+        assert_eq!(
+            echoes(log),
+            vec![
+                ". #delimit ;",
+                ". display \"> x\";",
+                ". display \"keep me\";"
+            ]
+        );
+        assert!(kept(log).contains(&"> x"));
+        assert!(kept(log).contains(&"keep me"));
     }
 
     #[test]
