@@ -7,10 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-13
+
 ### Added
 
 - Post-install dependency hints now also read the `Requires:` line of a package's `.pkg` manifest, catching author-declared SSC dependencies that static `.ado` scanning misses (#78).
 - `stacy add` warns when a package's manifest declares a newer minimum Stata version than the one stacy last detected (#82).
+- `stacy test -C <dir>`/`--directory` and `--cd`: control the test working directory, matching `stacy run` (#85).
+
+### Changed
+
+- `stacy test` runs tests with the project root as the working directory regardless of where it's invoked (previously the inherited directory) (#85).
 
 ### Fixed
 
