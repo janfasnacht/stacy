@@ -1,7 +1,7 @@
 use crate::cache::detect::{check_cache_with_working_dir, hash_working_dir, CacheStatus};
 use crate::cache::hash::{hash_dependency_tree, hash_lockfile};
 use crate::cache::{BuildCache, CacheEntry, CachedError, CachedResult};
-use crate::cli::output_format::OutputFormat;
+use crate::cli::output_format::{resolve_verbosity, OutputFormat};
 use crate::cli::output_types::{
     CacheHitOutput, CommandOutput, ParallelRunOutput, RunOutput, ScriptRunResult,
 };
@@ -139,26 +139,6 @@ pub enum CodeSource {
     File,
     /// Inline code from -c/--code flag
     Inline,
-}
-
-/// Resolve verbosity from CLI flags with TTY-awareness
-fn resolve_verbosity(
-    quiet: bool,
-    verbose: u8,
-    format: OutputFormat,
-) -> crate::executor::verbosity::Verbosity {
-    use crate::executor::verbosity::Verbosity;
-
-    if quiet || format.is_machine_readable() {
-        Verbosity::Quiet
-    } else {
-        match verbose {
-            0 if std::io::stdout().is_terminal() => Verbosity::DefaultInteractive,
-            0 => Verbosity::PipedDefault,
-            1 => Verbosity::Verbose,
-            _ => Verbosity::VeryVerbose,
-        }
-    }
 }
 
 #[derive(Args, Clone)]

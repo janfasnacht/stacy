@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `.pkg` manifests with bare `\r` (classic-Mac) line endings no longer parse as a title with no files (#79).
+- `stacy task` from the Stata console no longer fails with `r(199)`: machine-readable formats no longer stream script output to stdout (#84).
+- Line breaks in `--format stata` string values are replaced with spaces.
 
 ## [1.3.1] - 2026-07-10
 

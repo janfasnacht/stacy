@@ -3,7 +3,9 @@
 //! Provides the `OutputFormat` enum and utilities for formatting command output
 //! in human-readable, JSON, or Stata-native formats.
 
+use crate::executor::verbosity::Verbosity;
 use clap::ValueEnum;
+use std::io::IsTerminal;
 
 /// Output format for CLI commands
 ///
@@ -28,12 +30,31 @@ impl OutputFormat {
     }
 }
 
+/// Resolve executor verbosity from CLI flags with TTY-awareness
+///
+/// Machine-readable formats force `Quiet`: stdout is the payload channel
+/// (executed with `do` by the console wrappers), so nothing may be streamed
+/// to it (#84). Commands that run Stata derive their verbosity here.
+pub fn resolve_verbosity(quiet: bool, verbose: u8, format: OutputFormat) -> Verbosity {
+    if quiet || format.is_machine_readable() {
+        Verbosity::Quiet
+    } else {
+        match verbose {
+            0 if std::io::stdout().is_terminal() => Verbosity::DefaultInteractive,
+            0 => Verbosity::PipedDefault,
+            1 => Verbosity::Verbose,
+            _ => Verbosity::VeryVerbose,
+        }
+    }
+}
+
 /// Escape a string for use in Stata double-quoted strings
 ///
 /// In Stata, double-quoted strings ("...") do not expand macros,
 /// so only embedded double quotes need escaping (replaced with single quotes).
+/// Line breaks become spaces — a raw newline would split the assignment.
 pub fn escape_stata_string(s: &str) -> String {
-    s.replace('"', "'")
+    s.replace('"', "'").replace(['\n', '\r'], " ")
 }
 
 /// Format a boolean as a Stata scalar assignment
@@ -163,5 +184,46 @@ mod tests {
         assert!(!OutputFormat::Human.is_machine_readable());
         assert!(OutputFormat::Json.is_machine_readable());
         assert!(OutputFormat::Stata.is_machine_readable());
+    }
+
+    #[test]
+    fn test_escape_stata_string_replaces_line_breaks() {
+        assert_eq!(escape_stata_string("line1\nline2"), "line1 line2");
+        assert_eq!(escape_stata_string("line1\r\nline2"), "line1  line2");
+        assert_eq!(escape_stata_string("line1\rline2"), "line1 line2");
+    }
+
+    #[test]
+    fn test_resolve_verbosity_machine_readable_is_quiet() {
+        for verbose in 0..=2 {
+            assert_eq!(
+                resolve_verbosity(false, verbose, OutputFormat::Stata),
+                Verbosity::Quiet
+            );
+            assert_eq!(
+                resolve_verbosity(false, verbose, OutputFormat::Json),
+                Verbosity::Quiet
+            );
+        }
+    }
+
+    #[test]
+    fn test_resolve_verbosity_quiet_flag_wins() {
+        assert_eq!(
+            resolve_verbosity(true, 2, OutputFormat::Human),
+            Verbosity::Quiet
+        );
+    }
+
+    #[test]
+    fn test_resolve_verbosity_human_verbose_levels() {
+        assert_eq!(
+            resolve_verbosity(false, 1, OutputFormat::Human),
+            Verbosity::Verbose
+        );
+        assert_eq!(
+            resolve_verbosity(false, 2, OutputFormat::Human),
+            Verbosity::VeryVerbose
+        );
     }
 }

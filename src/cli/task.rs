@@ -2,7 +2,7 @@
 //!
 //! Run defined tasks from stacy.toml's `[scripts]` section.
 
-use crate::cli::output_format::OutputFormat;
+use crate::cli::output_format::{resolve_verbosity, OutputFormat};
 use crate::cli::output_types::{
     CommandOutput, ScriptResultOutput, TaskInfo, TaskListOutput, TaskOutput,
 };
@@ -169,10 +169,9 @@ pub fn execute(args: &TaskArgs) -> Result<()> {
     // Parse arguments
     let task_args = parse_task_args(&args.args)?;
 
-    // Create Stata executor
-    let executor =
-        StataExecutor::try_new(None, crate::executor::verbosity::Verbosity::PipedDefault)?
-            .with_local_ado_paths(project.resolve_local_ado_paths());
+    // Create Stata executor (machine-readable formats suppress streaming, #84)
+    let executor = StataExecutor::try_new(None, resolve_verbosity(false, 0, format))?
+        .with_local_ado_paths(project.resolve_local_ado_paths());
 
     // Create task executor
     let task_executor = TaskExecutor::new(&graph, &executor, &project.root).with_args(task_args);
