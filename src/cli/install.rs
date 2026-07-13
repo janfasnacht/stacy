@@ -455,21 +455,15 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
         if !skipped.is_empty() {
             summary.push(format!("{} failed", skipped.len()));
         }
-<<<<<<< HEAD
         if !mismatched.is_empty() {
             summary.push(format!("{} failed", mismatched.len()));
         }
-        println!("Install complete: {}", summary.join(", "));
-||||||| parent of ce331be (fix: exit nonzero when a package command does not complete (#94))
-        println!("Install complete: {}", summary.join(", "));
-=======
-        let headline = if skipped.is_empty() {
+        let headline = if skipped.is_empty() && mismatched.is_empty() {
             "Install complete"
         } else {
             "Install incomplete"
         };
         println!("{}: {}", headline, summary.join(", "));
->>>>>>> ce331be (fix: exit nonzero when a package command does not complete (#94))
     }
 
     // Checksum verification results

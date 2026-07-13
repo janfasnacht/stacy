@@ -75,6 +75,18 @@ static INCLUDE_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
 static REQUIRE_PATTERN: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r#"(?i)^\s*(?:cap(?:ture)?\s+)?require\s+(\w+)"#).unwrap());
 
+/// Matches an unexpanded Stata macro: `$name`, `${name}` (global) or `` `name' `` (local).
+static MACRO_PATTERN: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{?\w|`\w").unwrap());
+
+/// Whether a path still contains a Stata macro.
+///
+/// stacy reads scripts, it does not run them, so it cannot know what a macro
+/// holds. `do "$root/prep.do"` names a file whose location is only decided at
+/// run time: the path is unresolved, not missing.
+pub fn is_dynamic_path(path: &Path) -> bool {
+    MACRO_PATTERN.is_match(&path.to_string_lossy())
+}
+
 /// Parse a Stata script file for dependencies
 ///
 /// # Arguments
@@ -374,6 +386,32 @@ regress y x
         let content = r#"require using "requirements.txt""#;
         let deps = parse_dependencies_from_content(content).unwrap();
         assert!(deps.is_empty());
+    }
+
+    #[test]
+    fn test_is_dynamic_path_global_macro() {
+        assert!(is_dynamic_path(Path::new("$root/prep.do")));
+        assert!(is_dynamic_path(Path::new("${root}/prep.do")));
+    }
+
+    #[test]
+    fn test_is_dynamic_path_local_macro() {
+        assert!(is_dynamic_path(Path::new("`sub'/prep.do")));
+    }
+
+    #[test]
+    fn test_is_dynamic_path_plain_path() {
+        assert!(!is_dynamic_path(Path::new("utils/helper.do")));
+        assert!(!is_dynamic_path(Path::new("/abs/path/helper.do")));
+    }
+
+    #[test]
+    fn test_parse_do_with_macro_path() {
+        let content = r#"do "$root/prep.do""#;
+        let deps = parse_dependencies_from_content(content).unwrap();
+        assert_eq!(deps.len(), 1);
+        assert_eq!(deps[0].path, PathBuf::from("$root/prep.do"));
+        assert!(is_dynamic_path(&deps[0].path));
     }
 
     #[test]

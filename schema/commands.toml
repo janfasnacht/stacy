@@ -361,6 +361,11 @@ dependency graph, detects circular dependencies, and identifies missing files.
 
 `require` statements (including `cap require` and `capture require`) are
 recognized as package dependencies and shown as leaf nodes in the tree.
+
+A path that holds a Stata macro, such as `do "$root/prep.do"`, only points
+somewhere once Stata expands the macro. stacy reads the script but does not run
+it, so it lists the path as written and marks it as resolved at run time. Such a
+path is not a missing file and does not fail the command.
 """
 see_also = ["run"]
 
@@ -541,6 +546,9 @@ long_description = """
 Checks for newer versions of installed packages and updates them. Updates both
 `stacy.toml` and `stacy.lock` to reflect new versions. Use `--dry-run` to preview
 changes without applying them.
+
+A `local:` package lives in the project, so there is no source to check for a
+newer version. It is reported as skipped and does not fail the command.
 """
 see_also = ["outdated", "install", "lock"]
 
@@ -554,6 +562,7 @@ json = { type = "bool", description = "JSON output (internal)" }
 updated = { type = "int", json_path = "summary.updated", stata_type = "scalar", description = "Number of packages updated" }
 updates_available = { type = "int", json_path = "summary.updates_available", stata_type = "scalar", description = "Number of packages with updates available" }
 failed = { type = "int", json_path = "summary.failed", stata_type = "scalar", description = "Number of packages that failed to update" }
+skipped = { type = "int", json_path = "summary.skipped", stata_type = "scalar", description = "Number of packages with no source to check (local packages)" }
 total = { type = "int", json_path = "summary.total", stata_type = "scalar", description = "Total packages checked" }
 dry_run = { type = "bool", json_path = "dry_run", stata_type = "scalar", description = "Whether this was a dry run (1=yes, 0=no)" }
 

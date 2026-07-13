@@ -704,6 +704,8 @@ pub struct UpdateOutput {
     pub dry_run: bool,
     /// Number of packages that failed to update
     pub failed: i32,
+    /// Number of packages skipped (no source to check, e.g. local)
+    pub skipped: i32,
     /// 'success', 'partial', or 'error'
     pub status: String,
     /// Total packages checked
@@ -729,6 +731,7 @@ impl CommandOutput for UpdateOutput {
             self.updates_available as i64,
         ));
         lines.push(format_stata_scalar_int("failed", self.failed as i64));
+        lines.push(format_stata_scalar_int("skipped", self.skipped as i64));
         lines.push(format_stata_scalar_int("total", self.total as i64));
         lines.push(format_stata_scalar_bool("dry_run", self.dry_run));
         lines.join("\n")
@@ -1721,6 +1724,7 @@ mod tests {
         let output = UpdateOutput {
             dry_run: true,
             failed: 0,
+            skipped: 1,
             status: "success".to_string(),
             total: 5,
             updates_available: 2,
@@ -1732,6 +1736,7 @@ mod tests {
         assert!(stata.contains("scalar stacy_updated = 0"));
         assert!(stata.contains("scalar stacy_updates_available = 2"));
         assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(stata.contains("scalar stacy_skipped = 1"));
         assert!(stata.contains("scalar stacy_total = 5"));
         assert!(stata.contains("scalar stacy_dry_run = 1"));
     }
@@ -2116,6 +2121,7 @@ mod tests {
                 UpdateOutput {
                     dry_run: false,
                     failed: 0,
+                    skipped: 0,
                     status: "success".to_string(),
                     total: 2,
                     updates_available: 1,

@@ -50,6 +50,15 @@ impl Check {
     }
 }
 
+/// What `update` did with one package
+enum Outcome {
+    /// The source was asked for its latest version, and — outside a dry run —
+    /// the package was installed from it
+    Checked(Check),
+    /// There is no source to ask: the reason is carried for the report
+    Skipped(String),
+}
+
 /// Latest version from a manifest's distribution date, defaulting to today
 /// (the same rule the installers use when a package declares no date).
 fn manifest_version(distribution_date: Option<String>) -> String {
@@ -64,6 +73,7 @@ struct UpdatedPackage {
     new_version: Option<String>,
     updated: bool,
     has_update: bool,
+    skipped: bool,
     error: Option<String>,
 }
 
@@ -129,15 +139,18 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
         // latest version but installs nothing; anything it cannot check is a
         // failure, not an "up to date".
         let group = entry.group.as_str();
-        let update_result: Result<Check> = match &entry.source {
+        let update_result: Result<Outcome> = match &entry.source {
             PackageSource::SSC { name: _ } => {
                 if args.dry_run {
                     ssc_downloader.get_manifest(pkg_name).map(|m| {
-                        Check::from_version(manifest_version(m.distribution_date), &old_version)
+                        Outcome::Checked(Check::from_version(
+                            manifest_version(m.distribution_date),
+                            &old_version,
+                        ))
                     })
                 } else {
                     install_from_ssc(pkg_name, &project.root, group)
-                        .map(|r| Check::from_version(r.version, &old_version))
+                        .map(|r| Outcome::Checked(Check::from_version(r.version, &old_version)))
                 }
             }
             PackageSource::GitHub { repo, tag, .. } => {
@@ -148,9 +161,11 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                         // rather than the recorded distribution date.
                         github_downloader
                             .check_for_updates(parts[0], parts[1], tag)
-                            .map(|info| Check {
-                                new_version: info.latest_tag.unwrap_or_else(|| tag.clone()),
-                                has_update: info.has_update,
+                            .map(|info| {
+                                Outcome::Checked(Check {
+                                    new_version: info.latest_tag.unwrap_or_else(|| tag.clone()),
+                                    has_update: info.has_update,
+                                })
                             })
                     } else {
                         install_package_github(
@@ -161,20 +176,25 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                             &project.root,
                             group,
                         )
-                        .map(|r| Check::from_version(r.version, &old_version))
+                        .map(|r| Outcome::Checked(Check::from_version(r.version, &old_version)))
                     }
                 } else {
                     Err(Error::Config(format!("Invalid repo format: {}", repo)))
                 }
             }
-            PackageSource::Local { path } => Err(Error::Config(format!(
-                "Cannot update local package: {}",
-                path
-            ))),
+            // A local package is a directory in the project, not something to
+            // fetch: there is no newer version to find. Skipping it is the
+            // right answer, not a failure — the same call `outdated` makes.
+            PackageSource::Local { path } => {
+                Ok(Outcome::Skipped(format!("local package at {}", path)))
+            }
             PackageSource::Net { url } => {
                 if args.dry_run {
                     net_downloader.get_manifest(pkg_name, url).map(|m| {
-                        Check::from_version(manifest_version(m.distribution_date), &old_version)
+                        Outcome::Checked(Check::from_version(
+                            manifest_version(m.distribution_date),
+                            &old_version,
+                        ))
                     })
                 } else {
                     crate::packages::installer::install_from_net(
@@ -183,17 +203,16 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                         &project.root,
                         group,
                     )
-                    .map(|r| Check::from_version(r.version, &old_version))
+                    .map(|r| Outcome::Checked(Check::from_version(r.version, &old_version)))
                 }
             }
         };
 
         match update_result {
-            Ok(check) => {
-                let Check {
-                    new_version,
-                    has_update,
-                } = check;
+            Ok(Outcome::Checked(Check {
+                new_version,
+                has_update,
+            })) => {
                 let updated = !args.dry_run && has_update;
 
                 if format == OutputFormat::Human {
@@ -216,6 +235,22 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                     new_version: Some(new_version),
                     updated,
                     has_update,
+                    skipped: false,
+                    error: None,
+                });
+            }
+            Ok(Outcome::Skipped(reason)) => {
+                if format == OutputFormat::Human {
+                    println!("  = {} (skipped: {})", pkg_name, reason);
+                }
+
+                results.push(UpdatedPackage {
+                    name: pkg_name.clone(),
+                    new_version: Some(old_version.clone()),
+                    old_version,
+                    updated: false,
+                    has_update: false,
+                    skipped: true,
                     error: None,
                 });
             }
@@ -229,6 +264,7 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                     new_version: None,
                     updated: false,
                     has_update: false,
+                    skipped: false,
                     error: Some(e.to_string()),
                 });
             }
@@ -249,6 +285,7 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
     let updated_count = results.iter().filter(|r| r.updated).count() as i32;
     let updates_available = results.iter().filter(|r| r.has_update).count() as i32;
     let failed_count = results.iter().filter(|r| r.error.is_some()).count() as i32;
+    let skipped_count = results.iter().filter(|r| r.skipped).count() as i32;
 
     let status = if failed_count > 0 && updated_count == 0 {
         "error"
@@ -263,6 +300,7 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
         updated: updated_count,
         updates_available,
         failed: failed_count,
+        skipped: skipped_count,
         total: results.len() as i32,
         dry_run: args.dry_run,
     };
@@ -306,6 +344,7 @@ fn print_json_output(results: &[UpdatedPackage], output: &UpdateOutput) {
                 "new_version": r.new_version,
                 "updated": r.updated,
                 "has_update": r.has_update,
+                "skipped": r.skipped,
                 "error": r.error,
             })
         })
@@ -319,6 +358,7 @@ fn print_json_output(results: &[UpdatedPackage], output: &UpdateOutput) {
             "updated": output.updated,
             "updates_available": output.updates_available,
             "failed": output.failed,
+            "skipped": output.skipped,
             "total": output.total,
         }
     });
@@ -343,6 +383,9 @@ fn print_human_summary(output: &UpdateOutput, dry_run: bool) {
         let mut summary = Vec::new();
         if output.updated > 0 {
             summary.push(format!("{} updated", output.updated));
+        }
+        if output.skipped > 0 {
+            summary.push(format!("{} skipped", output.skipped));
         }
         if output.failed > 0 {
             summary.push(format!("{} failed", output.failed));

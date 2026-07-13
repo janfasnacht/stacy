@@ -490,6 +490,62 @@ url = "{CLOSED_URL}"
         .stdout(predicate::str::contains("All packages are up to date").not());
 }
 
+/// A `local:` package is not fetched from anywhere, so `update` has nothing to
+/// do for it. Skipping it is not a failure — the command must still exit 0 when
+/// every other package updated.
+#[test]
+fn test_update_skips_local_package_without_failing() {
+    let url = serve_package("goodpkg", "20260101");
+    let project = Project::new("[project]\nname = \"t\"\n").with_lockfile(&format!(
+        r#"version = "1"
+
+[packages.goodpkg]
+version = "20200101"
+group = "production"
+
+[packages.goodpkg.source]
+type = "Net"
+url = "{url}"
+
+[packages.mylocal]
+version = "20200101"
+group = "production"
+
+[packages.mylocal.source]
+type = "Local"
+path = "./lib/mylocal/"
+"#
+    ));
+
+    let json = json_after_exit(&project, &["update"], 0);
+    assert_eq!(json["status"], "success");
+    assert_eq!(json["summary"]["updated"], 1);
+    assert_eq!(json["summary"]["failed"], 0);
+    assert_eq!(json["summary"]["skipped"], 1);
+}
+
+/// The same holds for a dry run, and for a local package named on its own.
+#[test]
+fn test_update_local_package_alone_succeeds() {
+    let project = Project::new("[project]\nname = \"t\"\n").with_lockfile(
+        r#"version = "1"
+
+[packages.mylocal]
+version = "20200101"
+group = "production"
+
+[packages.mylocal.source]
+type = "Local"
+path = "./lib/mylocal/"
+"#,
+    );
+
+    let json = json_after_exit(&project, &["update", "mylocal", "--dry-run"], 0);
+    assert_eq!(json["status"], "success");
+    assert_eq!(json["summary"]["failed"], 0);
+    assert_eq!(json["summary"]["skipped"], 1);
+}
+
 // ============================================================================
 // deps
 // ============================================================================
@@ -571,4 +627,77 @@ fn test_deps_clean_graph_still_succeeds() {
         .assert()
         .success()
         .stdout(predicate::str::contains("\"status\": \"success\""));
+}
+
+/// A path built from a macro (`do "$root/prep.do"`) only exists once Stata has
+/// run the script. stacy reads the script, it does not run it, so the path is
+/// unresolved — not missing. It must not fail the command.
+#[test]
+fn test_deps_macro_path_is_unresolved_not_missing() {
+    let temp = TempDir::new().unwrap();
+    std::fs::write(
+        temp.path().join("main.do"),
+        "global root \"/data\"\nlocal sub \"steps\"\ndo \"$root/prep.do\"\ndo \"`sub'/clean.do\"\ndo \"helper.do\"\n",
+    )
+    .unwrap();
+    std::fs::write(temp.path().join("helper.do"), "display 1").unwrap();
+
+    let output = stacy()
+        .arg("deps")
+        .arg(temp.path().join("main.do"))
+        .arg("--format")
+        .arg("json")
+        .output()
+        .unwrap();
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["status"], "success");
+    assert_eq!(json["summary"]["has_missing"], false);
+    assert_eq!(json["summary"]["missing_count"], 0);
+    assert_eq!(json["summary"]["unresolved_count"], 2);
+}
+
+/// A macro path is reported, but as a note, not an error.
+#[test]
+fn test_deps_macro_path_is_reported_in_human_output() {
+    let temp = TempDir::new().unwrap();
+    std::fs::write(temp.path().join("main.do"), "do \"$root/prep.do\"\n").unwrap();
+
+    stacy()
+        .arg("deps")
+        .arg(temp.path().join("main.do"))
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("$root/prep.do"))
+        .stderr(predicate::str::contains("Error").not());
+}
+
+/// A real missing file next to a macro path is still an error.
+#[test]
+fn test_deps_missing_file_still_fails_alongside_macro_path() {
+    let temp = TempDir::new().unwrap();
+    std::fs::write(
+        temp.path().join("main.do"),
+        "do \"$root/prep.do\"\ndo \"gone.do\"\n",
+    )
+    .unwrap();
+
+    let output = stacy()
+        .arg("deps")
+        .arg(temp.path().join("main.do"))
+        .arg("--format")
+        .arg("json")
+        .output()
+        .unwrap();
+
+    assert_eq!(output.status.code(), Some(3));
+    let json: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_not_success(&json);
+    assert_eq!(json["summary"]["missing_count"], 1);
 }

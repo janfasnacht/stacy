@@ -16,6 +16,7 @@
     Returns:
         r(dry_run             ) - Whether this was a dry run (1=yes, 0=no) (scalar)
         r(failed              ) - Number of packages that failed to update (scalar)
+        r(skipped             ) - Number of packages with no source to check (local packages) (scalar)
         r(total               ) - Total packages checked (scalar)
         r(updated             ) - Number of packages updated (scalar)
         r(updates_available   ) - Number of packages with updates available (scalar)
@@ -50,6 +51,11 @@ program define stacy_update, rclass
     capture confirm scalar stacy_failed
     if _rc == 0 {
         return scalar failed = scalar(stacy_failed)
+    }
+
+    capture confirm scalar stacy_skipped
+    if _rc == 0 {
+        return scalar skipped = scalar(stacy_skipped)
     }
 
     capture confirm scalar stacy_total

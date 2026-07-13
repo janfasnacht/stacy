@@ -105,6 +105,14 @@ pub fn execute(args: &DepsArgs) -> Result<()> {
                     eprintln!("  - {}", path.display());
                 }
             }
+
+            if !analysis.dynamic_paths.is_empty() {
+                println!();
+                println!("Paths that hold a macro are resolved when the script runs:");
+                for path in &analysis.dynamic_paths {
+                    println!("  - {}", path.display());
+                }
+            }
         }
     }
 
@@ -139,6 +147,8 @@ fn print_flat_output(tree: &DependencyTree) {
         let indent = "  ".repeat(dep.depth + 1);
         let suffix = if dep.is_circular {
             " (circular)"
+        } else if dep.is_dynamic {
+            " (macro path, resolved at run time)"
         } else if !dep.exists {
             " (not found)"
         } else {
@@ -188,8 +198,10 @@ fn print_json_output(tree: &DependencyTree, script: &std::path::Path, status: &s
             "has_missing": tree.has_missing(),
             "circular_paths": tree.circular_paths().iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
             "missing_paths": tree.missing_paths().iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
+            "unresolved_paths": tree.dynamic_paths().iter().map(|p| p.display().to_string()).collect::<Vec<_>>(),
             "circular_count": tree.circular_paths().len(),
             "missing_count": tree.missing_paths().len(),
+            "unresolved_count": tree.dynamic_paths().len(),
         }
     });
 
@@ -207,6 +219,7 @@ fn tree_to_json(tree: &DependencyTree) -> serde_json::Value {
         "type": tree.dep_type.map(|t| t.to_string()),
         "exists": tree.exists,
         "is_circular": tree.is_circular,
+        "is_unresolved": tree.is_dynamic,
         "line_number": tree.line_number,
         "children": children,
     })
