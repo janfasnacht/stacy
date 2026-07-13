@@ -8,11 +8,24 @@
 use assert_cmd::{cargo_bin_cmd, Command};
 use predicates::prelude::*;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 fn stacy() -> Command {
     cargo_bin_cmd!("stacy")
+}
+
+/// Platform-correct cache subdirectory under a temp dir.
+///
+/// Windows resolves the cache from `LOCALAPPDATA` and adds a `cache` segment;
+/// the other platforms use `XDG_CACHE_HOME`. Writing to the wrong one leaves
+/// the package where stacy will not look for it.
+fn cache_packages_dir(root: &Path) -> PathBuf {
+    if cfg!(windows) {
+        root.join("stacy").join("cache").join("packages")
+    } else {
+        root.join("stacy").join("packages")
+    }
 }
 
 /// Project with one locked package (estout 1.0.0).
@@ -41,7 +54,7 @@ name = "estout"
 
 /// Populate the global cache with the package files stacy expects.
 fn install_into_cache(cache_home: &Path) {
-    let pkg = cache_home.join("stacy/packages/estout/1.0.0");
+    let pkg = cache_packages_dir(cache_home).join("estout").join("1.0.0");
     fs::create_dir_all(&pkg).unwrap();
     fs::write(pkg.join("estout.ado"), "program define estout\nend\n").unwrap();
 }
@@ -55,6 +68,7 @@ fn test_env_cold_cache_reports_package_missing() {
     stacy()
         .current_dir(temp.path())
         .env("XDG_CACHE_HOME", cache_home.path())
+        .env("LOCALAPPDATA", cache_home.path())
         .arg("env")
         .assert()
         .success()
@@ -72,6 +86,7 @@ fn test_env_warm_cache_reports_package_installed() {
     stacy()
         .current_dir(temp.path())
         .env("XDG_CACHE_HOME", cache_home.path())
+        .env("LOCALAPPDATA", cache_home.path())
         .arg("env")
         .assert()
         .success()
@@ -89,6 +104,7 @@ fn test_env_json_reports_missing_package() {
     let output = stacy()
         .current_dir(temp.path())
         .env("XDG_CACHE_HOME", cache_home.path())
+        .env("LOCALAPPDATA", cache_home.path())
         .args(["env", "--format", "json"])
         .output()
         .unwrap();
@@ -117,6 +133,7 @@ fn test_env_json_reports_installed_package() {
     let output = stacy()
         .current_dir(temp.path())
         .env("XDG_CACHE_HOME", cache_home.path())
+        .env("LOCALAPPDATA", cache_home.path())
         .args(["env", "--format", "json"])
         .output()
         .unwrap();
@@ -143,6 +160,7 @@ fn test_env_stata_format_reports_package_counts() {
     let output = stacy()
         .current_dir(temp.path())
         .env("XDG_CACHE_HOME", cache_home.path())
+        .env("LOCALAPPDATA", cache_home.path())
         .args(["env", "--format", "stata"])
         .output()
         .unwrap();
