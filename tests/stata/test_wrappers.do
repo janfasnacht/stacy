@@ -569,8 +569,11 @@ if `rc' == 0 {
     }
 
     capture confirm scalar r(script_count)
-    if _rc == 0 {
+    if _rc == 0 & r(script_count) >= 1 {
         di as result "  [PASS] r(script_count) = " r(script_count)
+    }
+    else {
+        di as error "  [FAIL] r(script_count) missing or 0 - task ran no scripts"
     }
 
     if "`r(task_name)'" == "test-task" {
@@ -890,6 +893,76 @@ else {
 
 * Clean up
 capture erase `"`update_flag'"'
+
+di _n
+
+* =============================================================================
+* Test 29: stacy task with noisy script output (#84 regression)
+* =============================================================================
+* noisy.do prints lines starting with "(" — not valid Stata commands. If the
+* CLI streams script output into --format stata stdout, _stacy_exec's `do`
+* fails with r(199). This is the exact failure mode of #84.
+di as text "TEST 29: stacy task noisy-task (#84 regression)"
+di as text "{hline 40}"
+
+capture noisily stacy task "noisy-task"
+local rc = _rc
+
+if `rc' == 0 {
+    di as result "  [PASS] noisy task executed successfully"
+
+    capture confirm scalar r(success)
+    if _rc == 0 & r(success) == 1 {
+        di as result "  [PASS] r(success) = 1"
+    }
+    else {
+        di as error "  [FAIL] r(success) missing or != 1 after noisy task"
+    }
+
+    capture confirm scalar r(script_count)
+    if _rc == 0 & r(script_count) >= 1 {
+        di as result "  [PASS] r(script_count) = " r(script_count)
+    }
+    else {
+        di as error "  [FAIL] r(script_count) missing or 0 - noisy script never ran"
+    }
+}
+else {
+    di as error "  [FAIL] noisy task failed with rc = `rc' (script output leaked into result channel?)"
+}
+
+di _n
+
+* =============================================================================
+* Test 30: stacy run with noisy script output (#84 regression)
+* =============================================================================
+di as text "TEST 30: stacy run scripts/noisy.do (#84 regression)"
+di as text "{hline 40}"
+
+capture noisily stacy run "scripts/noisy.do"
+local rc = _rc
+
+if `rc' == 0 {
+    di as result "  [PASS] noisy run executed successfully"
+
+    capture confirm scalar r(success)
+    if _rc == 0 & r(success) == 1 {
+        di as result "  [PASS] r(success) = 1"
+    }
+    else {
+        di as error "  [FAIL] r(success) missing or != 1 after noisy run"
+    }
+
+    if "`r(source)'" == "file" {
+        di as result "  [PASS] r(source) = file"
+    }
+    else {
+        di as error "  [FAIL] r(source) missing - noisy script never ran"
+    }
+}
+else {
+    di as error "  [FAIL] noisy run failed with rc = `rc' (script output leaked into result channel?)"
+}
 
 di _n
 
