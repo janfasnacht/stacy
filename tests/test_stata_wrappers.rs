@@ -122,24 +122,20 @@ fn test_stata_wrappers_in_project_context() {
     // Get absolute path to stacy binary
     let stacy_path = stacy_binary();
 
-    // Run the test file using stacy run
+    // Run the test file using stacy run. The internal log is removed on
+    // success, so request a durable copy with --log.
+    let log_path = temp.path().join("logs").join("test_wrappers.log");
     let output = Command::new(&stacy_path)
         .current_dir(temp.path())
         .env("STACY_BINARY", &stacy_path)
         .arg("run")
         .arg("test_wrappers.do")
+        .arg("--log")
+        .arg(&log_path)
         .output()
         .expect("Failed to execute stacy run");
 
-    // Read the log file
-    let log_path = temp.path().join("logs").join("test_wrappers.log");
-    let log_content = if log_path.exists() {
-        fs::read_to_string(&log_path).unwrap_or_default()
-    } else {
-        // Try current directory
-        let alt_log = temp.path().join("test_wrappers.log");
-        fs::read_to_string(&alt_log).unwrap_or_default()
-    };
+    let log_content = fs::read_to_string(&log_path).unwrap_or_default();
 
     // Parse results
     let (passed, failed) = parse_test_results(&log_content);
