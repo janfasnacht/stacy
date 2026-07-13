@@ -7,21 +7,27 @@ use crate::cli::output_types::{
     CommandOutput, TestInfo, TestListOutput, TestOutput, TestResultOutput,
 };
 use crate::cli::test_output;
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::executor::StataExecutor;
 use crate::project::Project;
 use crate::test::discovery::{discover_tests, find_test};
-use crate::test::runner::TestRunner;
+use crate::test::runner::{TestRunner, TestWorkingDir};
 use clap::Args;
+use std::path::PathBuf;
 use std::process;
 
 #[derive(Args)]
 #[command(after_help = "\
+Tests run with the project root as the working directory, so relative paths
+in tests resolve from the project root. Use -C/--directory or --cd to change.
+
 Examples:
   stacy test                              Run all tests
   stacy test test_regression              Run a specific test
   stacy test -f \"clean*\"                  Filter tests by pattern
-  stacy test --list                       List tests without running")]
+  stacy test --list                       List tests without running
+  stacy test -C data/                     Run tests in data/ directory
+  stacy test --cd                         Run each test in its own directory")]
 pub struct TestArgs {
     /// Specific test to run (name or path)
     #[arg(value_name = "TEST")]
@@ -30,6 +36,19 @@ pub struct TestArgs {
     /// Filter tests by pattern (can be used multiple times)
     #[arg(long, short = 'f', value_name = "PATTERN")]
     pub filter: Vec<String>,
+
+    /// Run tests in this directory instead of the project root
+    #[arg(
+        short = 'C',
+        long = "directory",
+        conflicts_with = "cd",
+        value_name = "DIR"
+    )]
+    pub directory: Option<PathBuf>,
+
+    /// Run each test in its own parent directory instead of the project root
+    #[arg(long, conflicts_with = "directory")]
+    pub cd: bool,
 
     /// Run tests in parallel
     #[arg(long)]
@@ -52,8 +71,34 @@ pub struct TestArgs {
     pub verbose: bool,
 }
 
+/// Resolve the working-directory mode from the --cd / -C flags.
+/// A -C directory is validated and made absolute up front.
+fn resolve_working_dir_mode(args: &TestArgs) -> Result<TestWorkingDir> {
+    if args.cd {
+        return Ok(TestWorkingDir::TestDir);
+    }
+    if let Some(ref dir) = args.directory {
+        let abs_dir = if dir.is_absolute() {
+            dir.clone()
+        } else {
+            std::env::current_dir()?.join(dir)
+        };
+        if !abs_dir.is_dir() {
+            return Err(Error::Config(format!(
+                "Directory not found: {}",
+                dir.display()
+            )));
+        }
+        return Ok(TestWorkingDir::Fixed(abs_dir));
+    }
+    Ok(TestWorkingDir::ProjectRoot)
+}
+
 pub fn execute(args: &TestArgs) -> Result<()> {
     let format = args.format;
+
+    // Resolve working directory from --cd or -C flags (validates -C early)
+    let working_dir = resolve_working_dir_mode(args)?;
 
     // Find project (optional for test command)
     let project = Project::find()?;
@@ -69,7 +114,7 @@ pub fn execute(args: &TestArgs) -> Result<()> {
     // Handle specific test
     if let Some(ref test_name) = args.test {
         if let Some(test) = find_test(&project_root, test_name)? {
-            return run_single_test(args, &project_root, &test, &local_ado_paths);
+            return run_single_test(args, &project_root, &test, &local_ado_paths, working_dir);
         } else {
             let msg = format!("Test '{}' not found", test_name);
             if format.is_machine_readable() {
@@ -130,7 +175,7 @@ pub fn execute(args: &TestArgs) -> Result<()> {
     }
 
     // Run tests
-    run_tests(args, &project_root, &tests, &local_ado_paths)
+    run_tests(args, &project_root, &tests, &local_ado_paths, working_dir)
 }
 
 fn run_single_test(
@@ -138,6 +183,7 @@ fn run_single_test(
     project_root: &std::path::Path,
     test: &crate::test::discovery::TestFile,
     local_ado_paths: &[std::path::PathBuf],
+    working_dir: TestWorkingDir,
 ) -> Result<()> {
     let format = args.format;
 
@@ -147,7 +193,7 @@ fn run_single_test(
         .with_local_ado_paths(local_ado_paths.to_vec());
 
     // Create test runner
-    let runner = TestRunner::new(&executor, project_root);
+    let runner = TestRunner::new(&executor, project_root).with_working_dir(working_dir);
 
     // Run the test
     if !args.quiet && format == OutputFormat::Human {
@@ -193,6 +239,7 @@ fn run_tests(
     project_root: &std::path::Path,
     tests: &[crate::test::discovery::TestFile],
     local_ado_paths: &[std::path::PathBuf],
+    working_dir: TestWorkingDir,
 ) -> Result<()> {
     let format = args.format;
 
@@ -202,7 +249,9 @@ fn run_tests(
         .with_local_ado_paths(local_ado_paths.to_vec());
 
     // Create test runner
-    let runner = TestRunner::new(&executor, project_root).with_parallel(args.parallel);
+    let runner = TestRunner::new(&executor, project_root)
+        .with_parallel(args.parallel)
+        .with_working_dir(working_dir);
 
     // Print header
     if !args.quiet && format == OutputFormat::Human {

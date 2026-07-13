@@ -25,9 +25,33 @@ fn format_stata_error(err: &StataError) -> String {
         }
     }
 }
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// Working directory for test execution
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum TestWorkingDir {
+    /// Project root (default)
+    #[default]
+    ProjectRoot,
+    /// A fixed directory (from -C/--directory)
+    Fixed(PathBuf),
+    /// Each test's own parent directory (from --cd)
+    TestDir,
+}
+
+/// Resolve the effective working directory for a single test
+fn resolve_working_dir(mode: &TestWorkingDir, project_root: &Path, test_path: &Path) -> PathBuf {
+    match mode {
+        TestWorkingDir::ProjectRoot => project_root.to_path_buf(),
+        TestWorkingDir::Fixed(dir) => dir.clone(),
+        TestWorkingDir::TestDir => test_path
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| project_root.to_path_buf()),
+    }
+}
 
 /// Result of running a single test
 #[derive(Debug, Clone)]
@@ -110,6 +134,8 @@ pub struct TestRunner<'a> {
     project_root: &'a Path,
     /// Run tests in parallel
     parallel: bool,
+    /// Working directory mode for test execution
+    working_dir: TestWorkingDir,
 }
 
 impl<'a> TestRunner<'a> {
@@ -119,6 +145,7 @@ impl<'a> TestRunner<'a> {
             stata,
             project_root,
             parallel: false,
+            working_dir: TestWorkingDir::default(),
         }
     }
 
@@ -128,11 +155,20 @@ impl<'a> TestRunner<'a> {
         self
     }
 
+    /// Set the working directory mode for test execution
+    pub fn with_working_dir(mut self, working_dir: TestWorkingDir) -> Self {
+        self.working_dir = working_dir;
+        self
+    }
+
     /// Run a single test
     pub fn run_test(&self, test: &TestFile) -> Result<TestResult> {
         let start = Instant::now();
 
-        let result = self.stata.run(&test.path, Some(self.project_root))?;
+        let working_dir = resolve_working_dir(&self.working_dir, self.project_root, &test.path);
+        let result = self
+            .stata
+            .run_in_dir(&test.path, Some(self.project_root), &working_dir)?;
         let duration = start.elapsed();
 
         let error_message = if !result.success {
@@ -225,6 +261,36 @@ impl<'a> TestRunner<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_resolve_working_dir_project_root() {
+        let dir = resolve_working_dir(
+            &TestWorkingDir::ProjectRoot,
+            Path::new("/project"),
+            Path::new("/project/tests/test_foo.do"),
+        );
+        assert_eq!(dir, PathBuf::from("/project"));
+    }
+
+    #[test]
+    fn test_resolve_working_dir_fixed() {
+        let dir = resolve_working_dir(
+            &TestWorkingDir::Fixed(PathBuf::from("/project/data")),
+            Path::new("/project"),
+            Path::new("/project/tests/test_foo.do"),
+        );
+        assert_eq!(dir, PathBuf::from("/project/data"));
+    }
+
+    #[test]
+    fn test_resolve_working_dir_test_dir() {
+        let dir = resolve_working_dir(
+            &TestWorkingDir::TestDir,
+            Path::new("/project"),
+            Path::new("/project/tests/nested/test_foo.do"),
+        );
+        assert_eq!(dir, PathBuf::from("/project/tests/nested"));
+    }
 
     #[test]
     fn test_suite_result_new() {
