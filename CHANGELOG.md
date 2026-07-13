@@ -7,8 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-13
+
+Commands that could not finish their work used to exit 0. They now exit nonzero, which will surface failures a script or CI step previously ran past. See Changed.
+
+### Changed
+
+- Package commands exit nonzero when their work did not complete, and report a non-success `status` in `--format json`/`stata`. `install`, `lock`, `outdated`, `add`, `update` and `deps` all treated a resolve, install or version-check failure as a warning and exited 0 (#94).
+- `stacy.toml` rejects unknown keys, naming the offending one. A misplaced or misspelled key — a dependency under `[dependencies]` instead of `[packages.dependencies]`, a typo'd `verison` pin — was dropped without a word (#100).
+- `[packages] ado_dir` is rejected along with them. Nothing has ever read it; local ado directories are `[paths] ado`. Remove the key if your `stacy.toml` carries it (#100).
+- `stacy install` no longer writes `stacy.lock`. It installs the pinned version and fails when the source no longer serves it, instead of re-resolving and moving the pin. SSC serves only the current revision, so a cold-cache install of a superseded pin now fails rather than silently installing something else (#96).
+- `stacy run` checks every locked package against the cache before starting Stata and fails on a missing or modified one. `run --no-verify` skips the check (#97).
+- A successful run removes its log in every output format. `--format json`/`stata` kept it, so each in-Stata `stacy_run` left one behind (#98).
+
 ### Fixed
 
+- `stacy run` no longer drops streamed output that looks like a command echo. Echo detection ran on the trimmed line, so indented result lines went with it: every data row of `list`, the missing-value row of `tabulate, missing`, `display "1. step"`. The log was never affected (#95).
+- `[run] log_dir` is honored. Per-script logs were written to the project root and kept after a successful run (#98).
+- `stacy env` checks the cache before calling a locked package installed. A cold cache reported every package as installed (#99).
+- `stacy add <name> --source local:<dir>` requires the directory to hold the named package instead of installing whatever it contains (#100).
+- `stacy doctor` no longer reports a package's own shipped files as missing dependencies. ftools' internal `.mata` files were listed as missing SSC packages, with a `stacy add` tip that could not work (#101).
 - A task that defines no work — a table without `script` or `parallel` (e.g. a typo'd key, which TOML parsing silently drops) or an empty array — now fails with a config error instead of succeeding as a no-op (#92).
 
 ## [1.4.0] - 2026-07-13

@@ -1,6 +1,6 @@
 *! stacy_setup.ado - Download and install stacy binary
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.4.0
+*! Version: 1.5.0
 
 /*
     Download and install the stacy binary from GitHub releases.
