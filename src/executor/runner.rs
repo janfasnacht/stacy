@@ -61,6 +61,9 @@ pub struct RunOptions<'a> {
     pub working_dir: Option<&'a Path>,
     /// Local ado directories to prepend to S_ADO (resolved to absolute paths).
     pub local_ado_paths: Vec<PathBuf>,
+    /// Check the locked packages against the package cache before starting
+    /// Stata. Default is true; `stacy run --no-verify` turns it off.
+    pub verify_packages: bool,
     /// Precomputed path where Stata will write the log file. When set, the
     /// runner uses this directly instead of deriving it from the script's stem.
     /// Callers that pass a wrapper script (see `executor::run_paths`) must set
@@ -79,6 +82,7 @@ impl<'a> RunOptions<'a> {
             allow_global: false,
             working_dir: None,
             local_ado_paths: Vec::new(),
+            verify_packages: true,
             log_file: None,
         }
     }
@@ -110,6 +114,11 @@ impl<'a> RunOptions<'a> {
 
     pub fn with_local_ado_paths(mut self, paths: Vec<PathBuf>) -> Self {
         self.local_ado_paths = paths;
+        self
+    }
+
+    pub fn with_verify_packages(mut self, verify: bool) -> Self {
+        self.verify_packages = verify;
         self
     }
 
@@ -179,8 +188,12 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
         if let Some(lockfile) = &lockfile_opt {
             // The lockfile only guarantees anything if the cache still holds
             // what it names. Check before Stata starts, so a modified or
-            // absent package fails loudly instead of running (#97).
-            global_cache::verify_lockfile_against_cache(lockfile)?;
+            // absent package fails loudly instead of running (#97). `--no-verify`
+            // opts out, and is the counterpart of `stacy install --no-verify`:
+            // a cache installed without checking will not match the lockfile.
+            if options.verify_packages {
+                global_cache::verify_lockfile_against_cache(lockfile)?;
+            }
 
             let s_ado = global_cache::build_s_ado(
                 lockfile,

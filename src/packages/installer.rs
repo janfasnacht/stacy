@@ -42,8 +42,17 @@ pub struct InstallResult {
 /// fetched as the new pin, while `install` checks what it fetched against the
 /// pin that already exists.
 struct ResolvedPackage {
-    /// Version derived from the manifest (or a source-specific fallback)
-    version: String,
+    /// The version the package itself names: the manifest's `Distribution-Date`,
+    /// a resolved commit SHA, or a local directory's content hash.
+    ///
+    /// `None` when the source names no version of its own. `add`/`update` then
+    /// invent one (`pin_version`), and `install` cannot use the version to
+    /// decide whether the pin is satisfied — the checksum is the only identity
+    /// such a package has.
+    declared_version: Option<String>,
+    /// Version to record when the source names none: today's date for SSC and
+    /// net packages, the git ref for GitHub ones.
+    fallback_version: String,
     /// Files fetched from the source
     files: Vec<DownloadedFile>,
     /// Combined checksum of all fetched files
@@ -58,17 +67,22 @@ struct ResolvedPackage {
     commit: Option<String>,
 }
 
+impl ResolvedPackage {
+    /// The version to record when this package is being pinned (`add`/`update`).
+    fn pin_version(&self) -> String {
+        self.declared_version
+            .clone()
+            .unwrap_or_else(|| self.fallback_version.clone())
+    }
+}
+
 /// Fetch a package from SSC.
 fn resolve_ssc(name: &str) -> Result<ResolvedPackage> {
     let download = SscDownloader::new().download_package(name)?;
 
     Ok(ResolvedPackage {
-        // Version from the manifest, or today's date when it declares none
-        version: download
-            .manifest
-            .distribution_date
-            .clone()
-            .unwrap_or_else(crate::utils::date::today_yyyymmdd),
+        declared_version: download.manifest.distribution_date.clone(),
+        fallback_version: crate::utils::date::today_yyyymmdd(),
         files: download.files,
         package_checksum: download.package_checksum,
         from_mirror: download.from_mirror,
@@ -92,18 +106,17 @@ fn resolve_github(
     // Resolve the commit SHA for reproducibility (graceful degradation)
     let commit = downloader.resolve_commit_sha(user, repo, &download.git_ref);
 
-    // Version from the manifest, or the short SHA / git ref as fallback
-    let version = download
-        .manifest
-        .distribution_date
-        .clone()
-        .unwrap_or_else(|| match &commit {
-            Some(sha) => sha.get(..8).unwrap_or(sha.as_str()).to_string(),
-            None => git_ref.unwrap_or("main").to_string(),
-        });
+    // The manifest's date names the version; failing that, the commit does.
+    // A git ref alone names nothing — `main` is whatever it points at today.
+    let declared_version = download.manifest.distribution_date.clone().or_else(|| {
+        commit
+            .as_ref()
+            .map(|sha| sha.get(..8).unwrap_or(sha.as_str()).to_string())
+    });
 
     Ok(ResolvedPackage {
-        version,
+        declared_version,
+        fallback_version: git_ref.unwrap_or("main").to_string(),
         files: download.files,
         package_checksum: download.package_checksum,
         from_mirror: false, // GitHub packages don't use SSC mirrors
@@ -118,11 +131,8 @@ fn resolve_net(name: &str, url: &str) -> Result<ResolvedPackage> {
     let download = NetDownloader::new().download_package(name, url)?;
 
     Ok(ResolvedPackage {
-        version: download
-            .manifest
-            .distribution_date
-            .clone()
-            .unwrap_or_else(crate::utils::date::today_yyyymmdd),
+        declared_version: download.manifest.distribution_date.clone(),
+        fallback_version: crate::utils::date::today_yyyymmdd(),
         files: download.files,
         package_checksum: download.package_checksum,
         from_mirror: false,
@@ -142,9 +152,13 @@ fn resolve_local(name: &str, path: &str, project_root: &Path) -> Result<Resolved
 
     let download = local::scan_local_directory(name, &dir)?;
 
+    // Local packages have no manifest: the version is the short content hash,
+    // so the directory does name its own version.
+    let version = download.package_checksum[..8].to_string();
+
     Ok(ResolvedPackage {
-        // Local packages have no manifest: the version is the short checksum
-        version: download.package_checksum[..8].to_string(),
+        declared_version: Some(version.clone()),
+        fallback_version: version,
         files: download.files,
         package_checksum: download.package_checksum,
         from_mirror: false,
@@ -188,18 +202,19 @@ fn cache_and_lock(
     project_root: &Path,
     group: &str,
 ) -> Result<InstallResult> {
-    let (_cache_dir, saved_files) = atomic_save_to_cache(&resolved.files, name, &resolved.version)?;
+    let version = resolved.pin_version();
+    let (_cache_dir, saved_files) = atomic_save_to_cache(&resolved.files, name, &version)?;
 
     let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
     let was_update = lockfile.packages.contains_key(name);
 
-    let entry = create_package_entry(&resolved.version, source, &resolved.package_checksum, group);
+    let entry = create_package_entry(&version, source, &resolved.package_checksum, group);
     add_package(&mut lockfile, name, entry);
     save_lockfile(project_root, &lockfile)?;
 
     Ok(InstallResult {
         name: name.to_string(),
-        version: resolved.version,
+        version,
         files_installed: saved_files,
         was_update,
         from_mirror: resolved.from_mirror,
@@ -310,14 +325,23 @@ pub fn install_from_local(
 /// Install a package exactly as `stacy.lock` pins it.
 ///
 /// This is the `stacy install` path, and it never writes `stacy.lock`: the
-/// lockfile is the input, not the output. The fetched package must carry the
-/// pinned version, and (unless `verify` is off) hash to the pinned checksum.
-/// Anything else is an `Error::Integrity` — installing a different version
-/// under the pinned name is exactly the drift the lockfile exists to prevent.
+/// lockfile is the input, not the output. What the source serves must match the
+/// pin, or the install fails with an `Error::Integrity` — installing a different
+/// package under the pinned name is exactly the drift the lockfile prevents.
 ///
-/// `verify` mirrors `stacy install --no-verify`: it turns off the checksum
-/// comparison. The version pin is always enforced, because a different version
-/// is a different package rather than a question about bytes.
+/// Matching the pin means:
+///
+/// - The version, where the source names one. A `.pkg` with no
+///   `Distribution-Date` names no version — `add` recorded the date it fetched
+///   the package, which says nothing about the bytes — so there the pin is
+///   checked by checksum alone. Enforcing the version there would fail every
+///   cold-cache install made on a later day than the one that wrote the lock.
+/// - The checksum, whenever the lockfile records one and `verify` is on.
+///   `verify` is what `stacy install --no-verify` turns off.
+///
+/// A package whose source names no version and whose lockfile entry carries no
+/// checksum (lockfiles written before checksums) has nothing to check against,
+/// and installs as it did before.
 pub fn install_locked(
     name: &str,
     entry: &PackageEntry,
@@ -327,12 +351,12 @@ pub fn install_locked(
     let name = name.to_lowercase();
     let resolved = resolve_from_source(&name, &entry.source, project_root)?;
 
-    if resolved.version != entry.version {
-        return Err(Error::Integrity(version_mismatch_message(
-            &name,
-            entry,
-            &resolved.version,
-        )));
+    if let Some(served) = resolved.declared_version.as_deref() {
+        if served != entry.version {
+            return Err(Error::Integrity(version_mismatch_message(
+                &name, entry, served,
+            )));
+        }
     }
 
     if verify {
@@ -346,6 +370,7 @@ pub fn install_locked(
         }
     }
 
+    // Cached under the pinned version: that is the name `run` looks it up by.
     let (_cache_dir, saved_files) = atomic_save_to_cache(&resolved.files, &name, &entry.version)?;
 
     Ok(InstallResult {
@@ -415,8 +440,9 @@ fn checksum_mismatch_message(
          stacy.lock records sha256:{expected}\n  \
          {origin} serves sha256:{actual}\n  \
          The source changed the package contents without changing its version.\n  \
-         hint: run `stacy update {name}` to re-lock it, or `stacy install --no-verify` \
-         to install the served copy anyway.",
+         hint: run `stacy update {name}` to re-lock it (your results may change).\n  \
+         `stacy install --no-verify` installs the served copy without checking it; \
+         since it will not match stacy.lock, `stacy run` then needs --no-verify too.",
         name = name,
         version = entry.version,
         expected = expected,

@@ -426,17 +426,26 @@ pub fn check_cached_package(name: &str, entry: &PackageEntry) -> CacheState {
     }
 }
 
-/// Check every locked package against the global cache.
+/// Check the locked packages against the global cache.
 ///
 /// `stacy run` calls this before it starts Stata, so the packages on S_ADO are
-/// the ones the lockfile names: present, and byte-for-byte what was locked.
-/// Without it a modified or absent cached package runs silently (#97).
+/// the ones the lockfile names: byte-for-byte what was locked. Without it a
+/// modified or absent cached package runs silently (#97).
 ///
-/// This is on the hot path of every run, and it is always on rather than gated
-/// behind a strict mode — a default that silently runs modified code is not a
-/// reproducibility guarantee. The cost is one read plus a SHA256 of each locked
-/// package's files, which for the sizes SSC and GitHub packages actually reach
-/// is a few milliseconds against a Stata startup measured in seconds.
+/// A cached package is checked against its locked checksum whatever group it is
+/// in, since every locked package is on the ado-path. An *absent* package is an
+/// error only in the production group: `stacy install` installs that group by
+/// default, so a missing production package means the project was never
+/// installed. dev and test packages are installed on request
+/// (`stacy install --with dev,test`), and a project that never installs them
+/// must still be able to run.
+///
+/// This is on the hot path of every run, and it is on by default rather than
+/// gated behind a strict mode — a default that silently runs modified code is
+/// not a reproducibility guarantee. `stacy run --no-verify` turns it off. The
+/// cost is one read plus a SHA256 of each locked package's files, which for the
+/// sizes SSC and GitHub packages actually reach is a few milliseconds against a
+/// Stata startup measured in seconds.
 pub fn verify_lockfile_against_cache(lockfile: &Lockfile) -> Result<()> {
     let mut missing: Vec<&str> = Vec::new();
     let mut modified: Vec<&str> = Vec::new();
@@ -444,7 +453,11 @@ pub fn verify_lockfile_against_cache(lockfile: &Lockfile) -> Result<()> {
     for (name, entry) in &lockfile.packages {
         match check_cached_package(name, entry) {
             CacheState::Verified | CacheState::Unverifiable => {}
-            CacheState::Missing => missing.push(name),
+            CacheState::Missing => {
+                if entry.group == "production" {
+                    missing.push(name);
+                }
+            }
             CacheState::Modified => modified.push(name),
         }
     }
@@ -469,7 +482,7 @@ pub fn verify_lockfile_against_cache(lockfile: &Lockfile) -> Result<()> {
     if !missing.is_empty() {
         msg.push_str(&format!(
             "  not installed: {}\n  \
-             hint: run `stacy install` (add `--with dev,test` for those groups).\n",
+             hint: run `stacy install`.\n",
             missing.join(", ")
         ));
     }

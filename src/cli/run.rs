@@ -239,6 +239,12 @@ pub struct RunArgs {
     #[arg(long)]
     pub allow_global: bool,
 
+    /// Skip the check of the package cache against stacy.lock.
+    /// By default a locked package that is missing or has been modified since
+    /// it was installed fails the run. Counterpart of `stacy install --no-verify`.
+    #[arg(long)]
+    pub no_verify: bool,
+
     /// Enable Stata execution tracing at given depth (set trace on, set tracedepth N)
     #[arg(long, value_name = "DEPTH", conflicts_with_all = ["quiet", "parallel"])]
     pub trace: Option<u32>,
@@ -472,7 +478,8 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
         .with_local_ado_paths(local_ado_paths)
-        .with_timeout(args.timeout.map(Duration::from_secs));
+        .with_timeout(args.timeout.map(Duration::from_secs))
+        .with_verify_packages(!args.no_verify);
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     if let Some(ref mut m) = metrics {
@@ -718,7 +725,8 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
         .with_local_ado_paths(local_ado_paths)
-        .with_timeout(args.timeout.map(Duration::from_secs));
+        .with_timeout(args.timeout.map(Duration::from_secs))
+        .with_verify_packages(!args.no_verify);
 
     if let Some(ref mut m) = metrics {
         m.end_phase("setup");
@@ -965,7 +973,8 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
         .with_local_ado_paths(local_ado_paths)
-        .with_timeout(args.timeout.map(Duration::from_secs));
+        .with_timeout(args.timeout.map(Duration::from_secs))
+        .with_verify_packages(!args.no_verify);
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     let start = Instant::now();
@@ -1132,7 +1141,8 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
     let executor = StataExecutor::try_new(engine_ref, verbosity)?
         .with_allow_global(args.allow_global)
         .with_local_ado_paths(local_ado_paths)
-        .with_timeout(args.timeout.map(Duration::from_secs));
+        .with_timeout(args.timeout.map(Duration::from_secs))
+        .with_verify_packages(!args.no_verify);
     let project_root = project.as_ref().map(|p| p.root.as_path());
 
     if !args.quiet && format == OutputFormat::Human {

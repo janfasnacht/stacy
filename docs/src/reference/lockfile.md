@@ -68,8 +68,12 @@ tag = "v6.12.3"
 The lockfile is an input to `stacy install` and `stacy run`, never an output of them:
 
 - **`stacy install` installs what the lockfile pins.** It does not re-resolve versions and it does not write `stacy.lock`. If the source no longer serves the pinned version, or serves different bytes under it, the install fails and the lockfile is left untouched. This holds with and without `--frozen`.
-- **`stacy run` checks the cache against the lockfile before it starts Stata.** If a locked package is missing from the cache, or its cached files no longer hash to the locked checksum, the run fails instead of executing.
+- **`stacy run` checks the cache against the lockfile before it starts Stata.** If a cached package no longer hashes to the locked checksum, or a production package is not installed at all, the run fails instead of executing.
 - **Only `stacy add`, `stacy update`, and `stacy lock` write `stacy.lock`.** Moving a pin is an explicit act.
+
+### Which packages `run` requires
+
+`stacy install` installs the production group by default, so that is the group `run` requires to be present: a locked production package that is not in the cache fails the run. dev and test packages are installed on request (`stacy install --with dev,test`), so `run` does not require them — but it does check them against their locked checksums when they are installed, since every locked package is on the ado-path.
 
 ### A pinned version can become unfetchable
 
@@ -86,6 +90,8 @@ estout: stacy.lock pins version 20240315, but SSC serves 20260413
 
 This is a real limit of SSC, not something stacy can work around. The choice is to fail loudly or to run a different package than the one you locked; stacy fails.
 
+The version pin is only enforced where the package names its own version. A `.pkg` manifest without a `Distribution-Date` line names none — `stacy add` records the date it fetched the package, which says nothing about the contents — so for those packages the checksum decides whether the pin is satisfied. A cold-cache install of such a package succeeds as long as the bytes still hash to the locked checksum, whatever the date in the lockfile says.
+
 ## How Checksums Work
 
 Checksums verify that the installed package matches exactly what was recorded:
@@ -100,7 +106,9 @@ The checksum covers all `.ado` and `.sthlp` files in the package, sorted and con
 - SSC updates that changed the package
 - Manual modifications to cached files
 
-Checksums are checked by `stacy install` and again by `stacy run` before every run. Verification on `run` is always on: it reads and hashes the locked packages, which costs milliseconds against a Stata startup measured in seconds, and a default that silently runs modified code would not be a reproducibility guarantee.
+Checksums are checked by `stacy install` and again by `stacy run` before every run. Verification on `run` is on by default: it reads and hashes the locked packages, which costs milliseconds against a Stata startup measured in seconds, and a default that silently runs modified code would not be a reproducibility guarantee.
+
+`--no-verify` turns checksum verification off. It applies to both commands, and it has to: `stacy install --no-verify` caches whatever the source served, which by definition does not match the locked checksum, so `stacy run` on that cache needs `--no-verify` too. Prefer `stacy update <package>` to re-lock, and expect your results to change.
 
 ## Fields Reference
 
@@ -187,14 +195,14 @@ If the re-download also mismatches, the source changed the package without chang
 
 ### "The package cache does not match stacy.lock"
 
-`stacy run` reports this when a locked package is missing from the cache or has been modified since it was installed:
+`stacy run` reports this when a locked production package is missing from the cache, or when any locked package has been modified since it was installed:
 
 ```bash
 stacy install                    # Install the locked packages
-stacy install --with dev,test    # ...including dev and test groups
+stacy cache packages clean       # ...or clear a modified cache first
 ```
 
-Every package in `stacy.lock` is on the ado-path of every run, so all of them must be installed — including dev and test dependencies.
+A cached package that no longer hashes to its locked checksum is reported as modified whatever group it is in, since every locked package is on the ado-path.
 
 ### Merge conflicts in lockfile
 
