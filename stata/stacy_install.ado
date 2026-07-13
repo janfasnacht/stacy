@@ -12,7 +12,7 @@
 
     Options:
         FROZEN               - Fail if lockfile doesn't match stacy.toml
-        NOVerify             - Skip checksum verification
+        NOVerify             - Skip checksum verification (the version pin is still enforced)
         With(string)         - Include dependency groups (comma-separated: dev, test)
 
     Returns:

@@ -22,7 +22,7 @@
 {synoptline}
 {syntab:Main}
 {synopt:{opt:frozen}}Fail if lockfile doesn't match stacy.toml{p_end}
-{synopt:{opt:noverify}}Skip checksum verification{p_end}
+{synopt:{opt:noverify}}Skip checksum verification (the version pin is still enforced){p_end}
 {synopt:{opt:with(string)}}Include dependency groups (comma-separated: dev, test){p_end}
 {synoptline}
 
@@ -41,7 +41,7 @@
 {opt frozen} fail if lockfile doesn't match stacy.toml.
 
 {phang}
-{opt no_verify} skip checksum verification.
+{opt no_verify} skip checksum verification (the version pin is still enforced).
 
 {phang}
 {opt with} include dependency groups (comma-separated: dev, test).

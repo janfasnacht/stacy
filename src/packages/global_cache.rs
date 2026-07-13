@@ -7,7 +7,7 @@
 //! to the cached packages.
 
 use crate::error::{Error, Result};
-use crate::project::Lockfile;
+use crate::project::{Lockfile, PackageEntry};
 use std::path::PathBuf;
 
 /// Get the global package cache directory.
@@ -389,6 +389,41 @@ pub fn hash_package_dir(dir: &std::path::Path) -> Option<String> {
         return None;
     }
     Some(calculate_combined_checksum(&checksums))
+}
+
+/// How a locked package compares to what is actually in the global cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheState {
+    /// Cached files hash to the checksum recorded in the lockfile.
+    Verified,
+    /// Cached, but the lockfile records no checksum to compare against.
+    Unverifiable,
+    /// Not in the cache, or the cache directory is empty.
+    Missing,
+    /// Cached, but the files hash to something other than the locked checksum.
+    Modified,
+}
+
+/// Compare one locked package against the global cache.
+pub fn check_cached_package(name: &str, entry: &PackageEntry) -> CacheState {
+    if !is_cached(name, &entry.version).unwrap_or(false) {
+        return CacheState::Missing;
+    }
+
+    let Some(expected) = entry.checksum.as_deref() else {
+        return CacheState::Unverifiable;
+    };
+    let expected = expected.strip_prefix("sha256:").unwrap_or(expected);
+
+    let Ok(dir) = package_path(name, &entry.version) else {
+        return CacheState::Missing;
+    };
+
+    match hash_package_dir(&dir) {
+        Some(actual) if actual == expected => CacheState::Verified,
+        Some(_) => CacheState::Modified,
+        None => CacheState::Missing,
+    }
 }
 
 #[cfg(test)]

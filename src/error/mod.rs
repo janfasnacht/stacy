@@ -27,6 +27,13 @@ pub enum Error {
     #[error("Network error: {0}")]
     Network(String),
 
+    /// A package does not match what stacy.lock records for it: the source
+    /// serves a different version or different bytes, or the cached copy has
+    /// been modified. Distinct from `Config` and `Network` so callers can tell
+    /// "the lockfile is not being honoured" from "the download failed".
+    #[error("{0}")]
+    Integrity(String),
+
     #[error("Project not found. Run `stacy init` to create a project.")]
     ProjectNotFound,
 }

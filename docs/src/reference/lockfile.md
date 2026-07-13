@@ -63,6 +63,28 @@ repo = "sergiocorreia/reghdfe"
 tag = "v6.12.3"
 ```
 
+## What the lockfile guarantees
+
+The lockfile is an input to `stacy install`, never an output of it:
+
+- **`stacy install` installs what the lockfile pins.** It does not re-resolve versions and it does not write `stacy.lock`. If the source no longer serves the pinned version, or serves different bytes under it, the install fails and the lockfile is left untouched. This holds with and without `--frozen`.
+- **Only `stacy add`, `stacy update`, and `stacy lock` write `stacy.lock`.** Moving a pin is an explicit act.
+
+### A pinned version can become unfetchable
+
+SSC serves only the current revision of a package. Once a pinned version leaves your package cache, it cannot be downloaded again. A cold-cache install of a superseded pin therefore fails:
+
+```
+estout: stacy.lock pins version 20240315, but SSC serves 20260413
+  SSC serves only the current revision of a package, so once a pinned version
+  leaves the package cache it cannot be downloaded again.
+  hint: run `stacy update estout` to move the pin to 20260413 (your results may
+        change), or restore 20240315 into the package cache from a machine that
+        still has it.
+```
+
+This is a real limit of SSC, not something stacy can work around. The choice is to fail loudly or to run a different package than the one you locked; stacy fails.
+
 ## How Checksums Work
 
 Checksums verify that the installed package matches exactly what was recorded:
@@ -159,6 +181,8 @@ The cached package differs from what's in the lockfile:
 stacy cache packages clean  # Clear cache
 stacy install               # Re-download
 ```
+
+If the re-download also mismatches, the source changed the package without changing its version. Run `stacy update <package>` to re-lock it, and expect your results to change.
 
 ### Merge conflicts in lockfile
 
