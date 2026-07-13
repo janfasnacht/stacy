@@ -178,10 +178,11 @@ progress_interval_seconds = 30
 
 ### Structured Logging
 
-For automated pipelines, use `--format json`. Machine-readable formats imply quiet execution (no streaming); the JSON result's `log_file` field points to the kept Stata log:
+For automated pipelines, use `--format json`. Machine-readable formats imply quiet execution (no streaming). The batch log follows the same rule as in human mode — removed on success, kept on failure — so `log_file` names the kept log of a failed run and is empty for one that passed. Add `--log <path>` to keep the raw log either way:
 
 ```bash
 stacy run --format json analysis.do
+stacy run --format json --log run.log analysis.do
 ```
 
 ---

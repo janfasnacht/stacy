@@ -374,16 +374,10 @@ fn resolve_working_dir(script: &Path, args: &RunArgs) -> Result<(PathBuf, Option
 /// Build the log-retention policy for a run.
 ///
 /// `--log <path>` makes the log a durable artifact at that path. Otherwise it is
-/// internal: removed on success, kept on failure — and kept for machine-readable
-/// formats, whose output reports the path. Kept logs go to `[run] log_dir`.
-fn log_policy(
-    project: &Option<crate::project::Project>,
-    format: OutputFormat,
-    dest: Option<PathBuf>,
-) -> LogPolicy {
-    LogPolicy::for_project(project.as_ref())
-        .keep_on_success(format.is_machine_readable())
-        .with_dest(dest)
+/// internal: removed on success, kept on failure, whatever the output format.
+/// Kept logs go to `[run] log_dir`.
+fn log_policy(project: &Option<crate::project::Project>, dest: Option<PathBuf>) -> LogPolicy {
+    LogPolicy::for_project(project.as_ref()).with_dest(dest)
 }
 
 /// Warn if semicolons detected in inline code (Stata uses newlines)
@@ -473,9 +467,10 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
     let mut result = executor.run(&script_path, project_root)?;
     // The log is owned by the retention policy, not by TempScript: an inline run
     // that failed keeps its log (in log_dir when configured) so the path printed
-    // below actually resolves.
-    result.log_file =
-        log_policy(&project, format, args.log.clone()).finalize(&result.log_file, result.success);
+    // below actually resolves. A successful run has no log, and reports none.
+    result.log_file = log_policy(&project, args.log.clone())
+        .finalize(&result.log_file, result.success)
+        .unwrap_or_default();
 
     if let Some(ref mut m) = metrics {
         m.end_phase("execution");
@@ -766,10 +761,10 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
     }
 
     // Log retention: --log moves it aside; otherwise internal — removed on
-    // success in human mode (output was already streamed), kept on failure
-    // and for machine formats whose output references it.
-    result.log_file =
-        log_policy(&project, format, args.log.clone()).finalize(&result.log_file, result.success);
+    // success, kept on failure so the path printed below resolves.
+    result.log_file = log_policy(&project, args.log.clone())
+        .finalize(&result.log_file, result.success)
+        .unwrap_or_default();
 
     // Build output
     let output = RunOutput {
@@ -942,7 +937,7 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
         .with_local_ado_paths(local_ado_paths)
         .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
-    let policy = log_policy(&project, format, None);
+    let policy = log_policy(&project, None);
 
     let start = Instant::now();
     let mut results: Vec<ScriptRunResult> = Vec::new();
@@ -983,9 +978,10 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
             executor.run(script, project_root)?
         };
 
-        // Log retention: internal file — removed on success in human mode
-        // (output was already streamed), kept on failure / machine formats.
-        let final_log = policy.finalize(&result.log_file, result.success);
+        // Log retention: internal file — removed on success, kept on failure.
+        let final_log = policy
+            .finalize(&result.log_file, result.success)
+            .unwrap_or_default();
 
         let script_result = ScriptRunResult {
             script: script.clone(),
@@ -1101,7 +1097,7 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
         .with_local_ado_paths(local_ado_paths)
         .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
-    let policy = log_policy(&project, format, None);
+    let policy = log_policy(&project, None);
 
     if !args.quiet && format == OutputFormat::Human {
         eprintln!(
@@ -1184,9 +1180,11 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
                 }
             }
 
-            // Log retention: removed on success in human mode (output shown
-            // above), kept on failure / machine formats.
-            result.log_file = policy.finalize(&result.log_file, result.success);
+            // Log retention: removed on success (the output was shown above),
+            // kept on failure.
+            result.log_file = policy
+                .finalize(&result.log_file, result.success)
+                .unwrap_or_default();
 
             script_results.push(result);
         }

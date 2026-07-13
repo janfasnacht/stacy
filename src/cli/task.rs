@@ -176,11 +176,9 @@ pub fn execute(args: &TaskArgs) -> Result<()> {
 
     // Create task executor. Each script's log follows the same retention rule as
     // `stacy run`: removed on success, kept (in `[run] log_dir`) on failure (#98).
-    let policy =
-        LogPolicy::for_project(Some(&project)).keep_on_success(format.is_machine_readable());
     let task_executor = TaskExecutor::new(&graph, &executor, &project.root)
         .with_args(task_args)
-        .with_log_policy(policy);
+        .with_log_policy(LogPolicy::for_project(Some(&project)));
 
     // Run the task
     let result = task_executor.execute(task_name)?;

@@ -28,7 +28,9 @@ The batch log file is internal: removed on success, kept on failure with its
 path printed in the failure output. Inside a project, kept logs go to `[run]
 log_dir` from `stacy.toml` (`logs/` by default); outside one they stay next to
 the run. The same rule applies to the scripts run by `stacy task`, `stacy test`
-and `stacy bench`. Use `--log <path>` to keep the raw Stata log as a durable
+and `stacy bench`, and to every output format — `--format json` and `--format
+stata` report an empty log_file for a run that succeeded, because there is no
+log to point at. Use `--log <path>` to keep the raw Stata log as a durable
 artifact — it wins over `log_dir` and is written whether the run passed or
 failed (`--quiet --log out.log` for a silent file-only run).
 

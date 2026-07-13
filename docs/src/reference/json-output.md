@@ -23,7 +23,7 @@ stacy env --format json
   "script": "analysis.do",
   "duration_secs": 12.45,
   "exit_code": 0,
-  "log_file": "/path/to/wd/analysis_12345_1715000000123_0.log"
+  "log_file": ""
 }
 ```
 
@@ -53,7 +53,7 @@ stacy env --format json
 | `script` | string | Path to script that was run |
 | `duration_secs` | float | Execution time in seconds |
 | `exit_code` | int | stacy exit code (0-10) |
-| `log_file` | string | Absolute path to Stata log file. Each invocation gets a unique stem (`<script>_<pid>_<nanos>_<n>.log`) so concurrent runs from a shared cwd never collide. |
+| `log_file` | string | Absolute path to the kept Stata log, empty when the run succeeded (a successful run's log is removed). Each invocation gets a unique stem (`<script>_<pid>_<nanos>_<n>.log`) so concurrent runs from a shared cwd never collide. Pass `--log <path>` to keep the log of a passing run; `log_file` then reports that path. |
 | `errors` | array | Error details (only on failure) |
 | `errors[].type` | string | Error type (`StataCode`, `Syntax`, `File`) |
 | `errors[].r_code` | int | Stata r() code if applicable |

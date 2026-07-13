@@ -2573,15 +2573,17 @@ fn test_run_parallel_same_stem_no_log_collision() {
 
 // Issue #20: each invocation must produce a distinct log file path so
 // concurrent stacy processes from a shared cwd never write to the same file.
+//
+// The script errors on purpose: only a failed run keeps its log (#98), so a
+// failure is what lets the test see the path stacy generated.
 #[test]
 #[ignore]
 fn test_run_log_path_unique_per_invocation() {
     let temp = TempDir::new().unwrap();
-    fs::write(temp.path().join("test.do"), "display 42\n").unwrap();
-    let script = temp.path().join("test.do");
+    fs::write(temp.path().join("test.do"), "error 198\n").unwrap();
 
-    let log1 = run_and_extract_log(&script);
-    let log2 = run_and_extract_log(&script);
+    let log1 = run_and_extract_log(temp.path(), "test.do");
+    let log2 = run_and_extract_log(temp.path(), "test.do");
 
     assert_ne!(
         log1, log2,
@@ -2681,13 +2683,15 @@ fn test_version_check_rejects_stale_binary() {
     );
 }
 
-fn run_and_extract_log(script: &std::path::Path) -> String {
+/// Run a failing script in `dir` and return the log path stacy reports.
+fn run_and_extract_log(dir: &std::path::Path, script: &str) -> String {
     let out = stacy()
+        .current_dir(dir)
         .arg("run")
         .arg("--format=json")
         .arg(script)
         .assert()
-        .success()
+        .failure()
         .get_output()
         .stdout
         .clone();

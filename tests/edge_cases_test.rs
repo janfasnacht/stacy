@@ -7,6 +7,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tempfile::TempDir;
 
 const STACY_BINARY: &str = env!("CARGO_BIN_EXE_stacy");
 
@@ -14,15 +15,18 @@ fn edge_case_script(name: &str) -> PathBuf {
     PathBuf::from("tests/edge_cases").join(name)
 }
 
-/// Run stacy with `--format=json` and return the log file path it reports.
+/// Run stacy with `--format=json` and `--log <dest>`, and return the log path it
+/// reports.
 ///
-/// Since #20, the log no longer lives at `script.with_extension("log")` —
-/// each invocation gets a unique stem. JSON output is the contract for
-/// discovering where Stata wrote the log.
-fn run_and_get_log(script: &Path) -> PathBuf {
+/// The batch log of a successful run is removed (#98), so a test that wants to
+/// inspect it asks for it with `--log` — the flag that makes the log durable.
+/// JSON output stays the contract for where the log ended up.
+fn run_and_get_log(script: &Path, dest: &Path) -> PathBuf {
     let output = Command::new(STACY_BINARY)
         .arg("run")
         .arg("--format=json")
+        .arg("--log")
+        .arg(dest)
         .arg(script)
         .output()
         .expect("Failed to execute stacy");
@@ -45,12 +49,12 @@ fn run_and_get_log(script: &Path) -> PathBuf {
 #[ignore] // Requires Stata - run locally with: cargo test --test edge_cases_test -- --ignored
 fn test_spaces_in_filename() {
     let script = edge_case_script("my script.do");
+    let temp = TempDir::new().expect("Failed to create temp dir");
 
     // Verify script exists
     assert!(script.exists(), "Test script should exist");
 
-    // Run stacy and ask it where the log landed (#20: not script.with_extension("log") anymore).
-    let log_file = run_and_get_log(&script);
+    let log_file = run_and_get_log(&script, &temp.path().join("run.log"));
 
     assert!(
         log_file.exists(),
@@ -63,12 +67,12 @@ fn test_spaces_in_filename() {
 #[ignore] // Requires Stata - run locally with: cargo test --test edge_cases_test -- --ignored
 fn test_unicode_in_filename() {
     let script = edge_case_script("café_analysis.do");
+    let temp = TempDir::new().expect("Failed to create temp dir");
 
     // Verify script exists
     assert!(script.exists(), "Test script should exist");
 
-    // Run stacy and ask it where the log landed (#20).
-    let log_file = run_and_get_log(&script);
+    let log_file = run_and_get_log(&script, &temp.path().join("run.log"));
 
     assert!(
         log_file.exists(),
@@ -81,12 +85,12 @@ fn test_unicode_in_filename() {
 #[ignore] // Requires Stata - run locally with: cargo test --test edge_cases_test -- --ignored --nocapture
 fn test_large_log_file() {
     let script = edge_case_script("large_log_generator.do");
+    let temp = TempDir::new().expect("Failed to create temp dir");
 
     // Verify script exists
     assert!(script.exists(), "Test script should exist");
 
-    // Run stacy and ask it where the log landed (#20).
-    let log_file = run_and_get_log(&script);
+    let log_file = run_and_get_log(&script, &temp.path().join("run.log"));
 
     assert!(
         log_file.exists(),

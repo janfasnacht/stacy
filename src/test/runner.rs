@@ -202,7 +202,7 @@ impl<'a> TestRunner<'a> {
             exit_code: result.exit_code,
             duration,
             error_message,
-            log_file: Some(log_file),
+            log_file,
         })
     }
 

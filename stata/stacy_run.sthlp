@@ -112,7 +112,7 @@
 {synopt:{cmd:r(success)}}Whether script succeeded (1=yes, 0=no){p_end}
 
 {p2col 5 25 29 2: Macros}{p_end}
-{synopt:{cmd:r(log_file)}}Path to log file{p_end}
+{synopt:{cmd:r(log_file)}}Path to the kept log file (empty when the run succeeded){p_end}
 {synopt:{cmd:r(script)}}Path to script{p_end}
 {synopt:{cmd:r(source)}}'file' or 'inline'{p_end}
 

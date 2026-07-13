@@ -224,6 +224,93 @@ fn test_failed_inline_run_keeps_the_log_it_printed() {
 }
 
 #[test]
+fn test_successful_machine_format_runs_leave_no_logs_behind() {
+    let temp = TempDir::new().unwrap();
+    setup_project(temp.path(), Some("logs"));
+    let fake = write_fake_stata(temp.path(), "pass");
+
+    // `--format stata` is what the in-Stata wrappers always pass, so one log per
+    // successful `stacy_run` would accumulate forever.
+    for _ in 0..3 {
+        stacy()
+            .current_dir(temp.path())
+            .env("STATA_BINARY", &fake)
+            .args(["run", "--format", "stata", "src/01_clean.do"])
+            .assert()
+            .success();
+    }
+
+    assert!(logs_in(temp.path()).is_empty());
+    assert!(
+        !temp.path().join("logs").exists(),
+        "successful machine-format runs must not accumulate logs"
+    );
+}
+
+#[test]
+fn test_successful_json_run_reports_no_log() {
+    let temp = TempDir::new().unwrap();
+    setup_project(temp.path(), Some("logs"));
+    let fake = write_fake_stata(temp.path(), "pass");
+
+    let output = stacy()
+        .current_dir(temp.path())
+        .env("STATA_BINARY", &fake)
+        .args(["run", "--format", "json", "src/01_clean.do"])
+        .output()
+        .unwrap();
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(
+        v["log_file"].as_str(),
+        Some(""),
+        "a removed log must not be reported as a path that does not exist"
+    );
+    assert!(logs_in(temp.path()).is_empty());
+    assert!(!temp.path().join("logs").exists());
+}
+
+#[test]
+fn test_failed_json_run_reports_the_kept_log() {
+    let temp = TempDir::new().unwrap();
+    setup_project(temp.path(), Some("logs"));
+    let fake = write_fake_stata(temp.path(), "fail");
+
+    let output = stacy()
+        .current_dir(temp.path())
+        .env("STATA_BINARY", &fake)
+        .args(["run", "--format", "json", "src/01_clean.do"])
+        .output()
+        .unwrap();
+
+    let v: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let reported = Path::new(v["log_file"].as_str().expect("log_file field"));
+    assert!(
+        reported.exists(),
+        "failure must report a log that exists: {}",
+        reported.display()
+    );
+    assert_eq!(logs_in(&temp.path().join("logs")).len(), 1);
+}
+
+#[test]
+fn test_successful_machine_format_task_leaves_no_log_behind() {
+    let temp = TempDir::new().unwrap();
+    setup_project(temp.path(), Some("logs"));
+    let fake = write_fake_stata(temp.path(), "pass");
+
+    stacy()
+        .current_dir(temp.path())
+        .env("STATA_BINARY", &fake)
+        .args(["task", "clean", "--format", "stata"])
+        .assert()
+        .success();
+
+    assert!(logs_in(temp.path()).is_empty());
+    assert!(!temp.path().join("logs").exists());
+}
+
+#[test]
 fn test_successful_task_leaves_no_log_behind() {
     let temp = TempDir::new().unwrap();
     setup_project(temp.path(), Some("logs"));

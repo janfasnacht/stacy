@@ -192,7 +192,10 @@ impl<'a> TaskExecutor<'a> {
 
         // Same contract as `stacy run`: the log is internal unless the run
         // failed. Without this every task left its log in the working directory.
-        let log_file = self.log_policy.finalize(&result.log_file, result.success);
+        let log_file = self
+            .log_policy
+            .finalize(&result.log_file, result.success)
+            .unwrap_or_default();
 
         let script_result = ScriptResult {
             name: name.to_string(),

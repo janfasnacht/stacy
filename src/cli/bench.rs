@@ -179,7 +179,9 @@ pub fn execute(args: &BenchArgs) -> Result<()> {
             if !result.success {
                 if format == OutputFormat::Human {
                     eprintln!("\nError: Script failed during warmup run {}", i + 1);
-                    eprintln!("Log: {}", log_file.display());
+                    if let Some(log) = &log_file {
+                        eprintln!("Log: {}", log.display());
+                    }
                 }
                 process::exit(result.exit_code);
             }
@@ -210,7 +212,9 @@ pub fn execute(args: &BenchArgs) -> Result<()> {
         if !result.success {
             if format == OutputFormat::Human {
                 eprintln!("\nError: Script failed on run {}", i + 1);
-                eprintln!("Log: {}", log_file.display());
+                if let Some(log) = &log_file {
+                    eprintln!("Log: {}", log.display());
+                }
             }
             process::exit(result.exit_code);
         }
