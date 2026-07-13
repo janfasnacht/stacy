@@ -6,10 +6,10 @@ use crate::cli::output_format::OutputFormat;
 use crate::cli::output_types::{CommandOutput, InstallOutput};
 use crate::error::{Error, Result};
 use crate::packages::global_cache;
-use crate::packages::installer::{install_package, install_package_github, is_package_installed};
+use crate::packages::installer::{install_locked, is_package_installed};
 use crate::packages::lockfile::{check_version_mismatch, load_lockfile, verify_lockfile_sync};
 use crate::project::config::load_config;
-use crate::project::{PackageSource, Project};
+use crate::project::Project;
 use clap::Args;
 use std::collections::HashSet;
 use std::path::Path;
@@ -22,7 +22,7 @@ Examples:
   stacy install --no-verify               Skip checksum verification
   stacy install --frozen                  Fail if lockfile is out of sync (for CI)")]
 pub struct InstallArgs {
-    /// Skip checksum verification
+    /// Skip checksum verification (the version pin is still enforced)
     #[arg(long)]
     pub no_verify: bool,
 
@@ -195,8 +195,8 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
         .filter(|r| matches!(r.action, SyncAction::Skipped(_)))
         .count() as i32;
 
-    // Compute checksum failures *before* emitting output, so the Stata/JSON
-    // output reflects the real outcome instead of a stale "success".
+    // Compute failures *before* emitting output, so the Stata/JSON output
+    // reflects the real outcome instead of a stale "success".
     let failed_names: Vec<&str> = if verify {
         results
             .iter()
@@ -206,14 +206,29 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
     } else {
         Vec::new()
     };
-    let failed_count = failed_names.len() as i32;
 
-    let error_message: Option<String> = if failed_count > 0 {
-        Some(format!(
+    // Packages the source served differently from what stacy.lock pins.
+    let mismatches: Vec<&str> = results
+        .iter()
+        .filter_map(|r| match &r.action {
+            SyncAction::Mismatched(msg) => Some(msg.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    let failed_count = (failed_names.len() + mismatches.len()) as i32;
+
+    let mut problems: Vec<String> = mismatches.iter().map(|m| m.to_string()).collect();
+    if !failed_names.is_empty() {
+        problems.push(format!(
             "{} package(s) failed checksum verification: {}. Use --no-verify to skip.",
-            failed_count,
+            failed_names.len(),
             failed_names.join(", ")
-        ))
+        ));
+    }
+
+    let error_message: Option<String> = if !problems.is_empty() {
+        Some(problems.join("\n\n"))
     } else if skipped_count > 0 && installed_count == 0 {
         Some(format!(
             "{} package(s) skipped, none installed",
@@ -246,7 +261,9 @@ fn install_from_lockfile(args: &InstallArgs) -> Result<()> {
     }
 
     if failed_count > 0 {
-        return Err(Error::Config(error_message.unwrap()));
+        // Both kinds of failure — a source that disagrees with the pin, and a
+        // cached package that no longer hashes to it — are integrity failures.
+        return Err(Error::Integrity(error_message.unwrap()));
     }
 
     Ok(())
@@ -269,7 +286,10 @@ struct SyncedPackage {
 enum SyncAction {
     Installed,
     AlreadyInstalled,
+    /// Could not be fetched (offline, 404, unreachable source)
     Skipped(String),
+    /// Fetched, but not what stacy.lock pins — carries the explanation
+    Mismatched(String),
 }
 
 fn sync_package(
@@ -295,159 +315,41 @@ fn sync_package(
         });
     }
 
-    // Install based on source
-    let group = entry.group.as_str();
-    match &entry.source {
-        PackageSource::SSC { name: pkg_name } => {
-            match install_package(pkg_name, "ssc", project_root, group) {
-                Ok(result) => {
-                    // Warn if downloaded from mirror and checksum differs from lockfile
-                    if result.from_mirror {
-                        if let Some(expected) = &entry.checksum {
-                            let expected = expected.strip_prefix("sha256:").unwrap_or(expected);
-                            if result.package_checksum != expected {
-                                use colored::Colorize;
-                                eprintln!(
-                                    "{} {} downloaded from mirror; checksum differs from lockfile",
-                                    "warning:".yellow().bold(),
-                                    name,
-                                );
-                                eprintln!(
-                                    "    hint: SSC primary may have updated. Run `stacy update {}` to refresh.",
-                                    name,
-                                );
-                            }
-                        }
-                    }
+    // Cold cache: fetch exactly what the lockfile pins. install_locked leaves
+    // stacy.lock alone and fails if the source no longer serves that version
+    // or those bytes — install materializes the lockfile, it never rewrites it.
+    let action = match install_locked(name, entry, project_root, verify) {
+        Ok(_) => SyncAction::Installed,
+        // The source disagrees with the pin: a hard failure, not a skip.
+        Err(Error::Integrity(msg)) => SyncAction::Mismatched(msg),
+        // Transient: unreachable source, 404, IO. Reported, doesn't abort.
+        Err(e) => SyncAction::Skipped(e.to_string()),
+    };
 
-                    let checksum_ok = if verify {
-                        verify_package_checksum(name, entry)
-                    } else {
-                        None
-                    };
+    let checksum_ok = match (verify, &action) {
+        (true, SyncAction::Installed) => verify_package_checksum(name, entry),
+        _ => None,
+    };
 
-                    Ok(SyncedPackage {
-                        name: name.to_string(),
-                        version: entry.version.clone(),
-                        action: SyncAction::Installed,
-                        checksum_ok,
-                    })
-                }
-                Err(e) => Ok(SyncedPackage {
-                    name: name.to_string(),
-                    version: entry.version.clone(),
-                    action: SyncAction::Skipped(e.to_string()),
-                    checksum_ok: None,
-                }),
-            }
-        }
-        PackageSource::GitHub { repo, tag, commit } => {
-            // Parse repo into user/repo
-            let parts: Vec<&str> = repo.split('/').collect();
-            if parts.len() == 2 {
-                // Use commit SHA for downloads when available (exact reproducibility)
-                let git_ref = commit.as_deref().unwrap_or(tag.as_str());
-                match install_package_github(
-                    name,
-                    parts[0],
-                    parts[1],
-                    Some(git_ref),
-                    project_root,
-                    group,
-                ) {
-                    Ok(_) => {
-                        let checksum_ok = if verify {
-                            verify_package_checksum(name, entry)
-                        } else {
-                            None
-                        };
-
-                        Ok(SyncedPackage {
-                            name: name.to_string(),
-                            version: entry.version.clone(),
-                            action: SyncAction::Installed,
-                            checksum_ok,
-                        })
-                    }
-                    Err(e) => Ok(SyncedPackage {
-                        name: name.to_string(),
-                        version: entry.version.clone(),
-                        action: SyncAction::Skipped(e.to_string()),
-                        checksum_ok: None,
-                    }),
-                }
-            } else {
-                Ok(SyncedPackage {
-                    name: name.to_string(),
-                    version: entry.version.clone(),
-                    action: SyncAction::Skipped(format!("Invalid repo format: {}", repo)),
-                    checksum_ok: None,
-                })
-            }
-        }
-        PackageSource::Local { path } => {
-            match crate::packages::installer::install_from_local(name, path, project_root, group) {
-                Ok(_) => {
-                    let checksum_ok = if verify {
-                        verify_package_checksum(name, entry)
-                    } else {
-                        None
-                    };
-                    Ok(SyncedPackage {
-                        name: name.to_string(),
-                        version: entry.version.clone(),
-                        action: SyncAction::Installed,
-                        checksum_ok,
-                    })
-                }
-                Err(e) => Ok(SyncedPackage {
-                    name: name.to_string(),
-                    version: entry.version.clone(),
-                    action: SyncAction::Skipped(e.to_string()),
-                    checksum_ok: None,
-                }),
-            }
-        }
-        PackageSource::Net { url } => {
-            match crate::packages::installer::install_from_net(name, url, project_root, group) {
-                Ok(result) => {
-                    let checksum_ok = if verify {
-                        verify_package_checksum(name, entry)
-                    } else {
-                        None
-                    };
-                    Ok(SyncedPackage {
-                        name: name.to_string(),
-                        version: result.version,
-                        action: SyncAction::Installed,
-                        checksum_ok,
-                    })
-                }
-                Err(e) => Ok(SyncedPackage {
-                    name: name.to_string(),
-                    version: entry.version.clone(),
-                    action: SyncAction::Skipped(e.to_string()),
-                    checksum_ok: None,
-                }),
-            }
-        }
-    }
+    Ok(SyncedPackage {
+        name: name.to_string(),
+        version: entry.version.clone(),
+        action,
+        checksum_ok,
+    })
 }
 
 fn verify_package_checksum(name: &str, entry: &crate::project::PackageEntry) -> Option<bool> {
-    // Get expected checksum from lockfile
-    let expected = entry.checksum.as_ref()?;
-    let expected = expected.strip_prefix("sha256:").unwrap_or(expected);
+    // Nothing recorded to verify against (pre-checksum lockfile)
+    entry.checksum.as_ref()?;
 
-    // Find the package in the global cache
-    let cache_dir = global_cache::package_path(name, &entry.version).ok()?;
-    if !cache_dir.exists() {
-        return Some(false);
+    // Same comparison `stacy run` makes before every run
+    match global_cache::check_cached_package(name, entry) {
+        global_cache::CacheState::Verified => Some(true),
+        global_cache::CacheState::Missing | global_cache::CacheState::Modified => Some(false),
+        // Unreachable: the entry has a checksum, so it is comparable
+        global_cache::CacheState::Unverifiable => None,
     }
-
-    // Same hash `stacy add` records at download time
-    let actual = global_cache::hash_package_dir(&cache_dir)?;
-    Some(actual == expected)
 }
 
 fn print_sync_json_output(results: &[SyncedPackage], summary: &InstallOutput) {
@@ -463,9 +365,10 @@ fn print_sync_json_output(results: &[SyncedPackage], summary: &InstallOutput) {
                     SyncAction::Installed => "installed",
                     SyncAction::AlreadyInstalled => "already_installed",
                     SyncAction::Skipped(_) => "skipped",
+                    SyncAction::Mismatched(_) => "mismatched",
                 },
                 "error": match &r.action {
-                    SyncAction::Skipped(e) => Some(e.as_str()),
+                    SyncAction::Skipped(e) | SyncAction::Mismatched(e) => Some(e.as_str()),
                     _ => None,
                 },
                 "checksum_verified": r.checksum_ok,
@@ -493,6 +396,7 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
     let mut installed = Vec::new();
     let mut already = Vec::new();
     let mut skipped = Vec::new();
+    let mut mismatched = Vec::new();
 
     for result in results {
         match &result.action {
@@ -510,13 +414,18 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
                 );
                 skipped.push(&result.name);
             }
+            // The message is surfaced by the error this run exits with —
+            // printing it here too would just duplicate it.
+            SyncAction::Mismatched(_) => {
+                mismatched.push(&result.name);
+            }
         }
     }
 
     println!();
 
     // Summary
-    if installed.is_empty() && skipped.is_empty() {
+    if installed.is_empty() && skipped.is_empty() && mismatched.is_empty() {
         println!("All {} packages already installed.", already.len());
     } else {
         let mut summary = Vec::new();
@@ -528,6 +437,9 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
         }
         if !skipped.is_empty() {
             summary.push(format!("{} skipped", skipped.len()));
+        }
+        if !mismatched.is_empty() {
+            summary.push(format!("{} failed", mismatched.len()));
         }
         println!("Install complete: {}", summary.join(", "));
     }
@@ -565,7 +477,7 @@ fn print_sync_human_output(results: &[SyncedPackage]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::packages::ssc::{calculate_combined_checksum, calculate_sha256};
+    use crate::packages::ssc::calculate_combined_checksum;
     use serial_test::serial;
     use tempfile::TempDir;
 

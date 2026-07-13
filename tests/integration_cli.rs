@@ -1513,39 +1513,35 @@ fn test_install_frozen_flag_exists() {
         .stdout(predicate::str::contains("CI"));
 }
 
+/// `--frozen` passes when the lockfile lists exactly what stacy.toml declares.
+///
+/// Uses a vendored `local:` package so the install runs offline, and locks it
+/// with `stacy add` so the pinned version and checksum are the real ones —
+/// `install` fetches what stacy.lock pins and will not re-resolve past it.
 #[test]
 fn test_install_frozen_in_sync() {
     let temp = TempDir::new().unwrap();
-    fs::write(
-        temp.path().join("stacy.toml"),
-        r#"[project]
+    let cache = TempDir::new().unwrap();
 
-[packages.dependencies]
-estout = "ssc"
-"#,
-    )
-    .unwrap();
-    fs::write(
-        temp.path().join("stacy.lock"),
-        r#"version = "1"
+    fs::write(temp.path().join("stacy.toml"), "[project]\n").unwrap();
 
-[packages.estout]
-version = "2024.03.15"
-checksum = "sha256:abc123"
-group = "production"
-
-[packages.estout.source]
-type = "SSC"
-name = "estout"
-"#,
-    )
-    .unwrap();
+    let vendor = temp.path().join("vendor").join("testpkg");
+    fs::create_dir_all(&vendor).unwrap();
+    fs::write(vendor.join("testpkg.ado"), "program define testpkg\nend\n").unwrap();
 
     stacy()
         .current_dir(temp.path())
-        .arg("install")
-        .arg("--frozen")
-        .arg("--no-verify")
+        .args(["add", "testpkg", "--source", "local:vendor/testpkg"])
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("LOCALAPPDATA", cache.path())
+        .assert()
+        .success();
+
+    stacy()
+        .current_dir(temp.path())
+        .args(["install", "--frozen"])
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("LOCALAPPDATA", cache.path())
         .assert()
         .success();
 }

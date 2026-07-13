@@ -33,6 +33,9 @@ pub struct StataExecutor {
     local_ado_paths: Vec<PathBuf>,
     /// Kill the Stata process if it exceeds this duration.
     timeout: Option<Duration>,
+    /// Check the locked packages against the package cache before starting Stata.
+    /// Default is true; `stacy run --no-verify` turns it off.
+    verify_packages: bool,
 }
 
 impl Default for StataExecutor {
@@ -77,6 +80,7 @@ impl StataExecutor {
             allow_global: false,
             local_ado_paths: Vec::new(),
             timeout: None,
+            verify_packages: true,
         })
     }
 
@@ -89,6 +93,7 @@ impl StataExecutor {
             allow_global: false,
             local_ado_paths: Vec::new(),
             timeout: None,
+            verify_packages: true,
         }
     }
 
@@ -113,6 +118,12 @@ impl StataExecutor {
     /// Set execution timeout (SIGTERM → 5s grace → SIGKILL)
     pub fn with_timeout(mut self, timeout: Option<Duration>) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    /// Check the locked packages against the package cache before starting Stata
+    pub fn with_verify_packages(mut self, verify: bool) -> Self {
+        self.verify_packages = verify;
         self
     }
 
@@ -184,6 +195,7 @@ impl StataExecutor {
             options = options.with_args(args);
         }
         options = options.with_allow_global(self.allow_global);
+        options = options.with_verify_packages(self.verify_packages);
         if !self.local_ado_paths.is_empty() {
             options = options.with_local_ado_paths(self.local_ado_paths.clone());
         }

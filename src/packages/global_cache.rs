@@ -7,7 +7,7 @@
 //! to the cached packages.
 
 use crate::error::{Error, Result};
-use crate::project::Lockfile;
+use crate::project::{Lockfile, PackageEntry};
 use std::path::PathBuf;
 
 /// Get the global package cache directory.
@@ -389,6 +389,105 @@ pub fn hash_package_dir(dir: &std::path::Path) -> Option<String> {
         return None;
     }
     Some(calculate_combined_checksum(&checksums))
+}
+
+/// How a locked package compares to what is actually in the global cache.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheState {
+    /// Cached files hash to the checksum recorded in the lockfile.
+    Verified,
+    /// Cached, but the lockfile records no checksum to compare against.
+    Unverifiable,
+    /// Not in the cache, or the cache directory is empty.
+    Missing,
+    /// Cached, but the files hash to something other than the locked checksum.
+    Modified,
+}
+
+/// Compare one locked package against the global cache.
+pub fn check_cached_package(name: &str, entry: &PackageEntry) -> CacheState {
+    if !is_cached(name, &entry.version).unwrap_or(false) {
+        return CacheState::Missing;
+    }
+
+    let Some(expected) = entry.checksum.as_deref() else {
+        return CacheState::Unverifiable;
+    };
+    let expected = expected.strip_prefix("sha256:").unwrap_or(expected);
+
+    let Ok(dir) = package_path(name, &entry.version) else {
+        return CacheState::Missing;
+    };
+
+    match hash_package_dir(&dir) {
+        Some(actual) if actual == expected => CacheState::Verified,
+        Some(_) => CacheState::Modified,
+        None => CacheState::Missing,
+    }
+}
+
+/// Check the locked packages against the global cache.
+///
+/// `stacy run` calls this before it starts Stata, so the packages on S_ADO are
+/// the ones the lockfile names: byte-for-byte what was locked. Without it a
+/// modified or absent cached package runs silently (#97).
+///
+/// A cached package is checked against its locked checksum whatever group it is
+/// in, since every locked package is on the ado-path. An *absent* package is an
+/// error only in the production group: `stacy install` installs that group by
+/// default, so a missing production package means the project was never
+/// installed. dev and test packages are installed on request
+/// (`stacy install --with dev,test`), and a project that never installs them
+/// must still be able to run.
+///
+/// This is on the hot path of every run, and it is on by default rather than
+/// gated behind a strict mode — a default that silently runs modified code is
+/// not a reproducibility guarantee. `stacy run --no-verify` turns it off. The
+/// cost is one read plus a SHA256 of each locked package's files, which for the
+/// sizes SSC and GitHub packages actually reach is a few milliseconds against a
+/// Stata startup measured in seconds.
+pub fn verify_lockfile_against_cache(lockfile: &Lockfile) -> Result<()> {
+    let mut missing: Vec<&str> = Vec::new();
+    let mut modified: Vec<&str> = Vec::new();
+
+    for (name, entry) in &lockfile.packages {
+        match check_cached_package(name, entry) {
+            CacheState::Verified | CacheState::Unverifiable => {}
+            CacheState::Missing => {
+                if entry.group == "production" {
+                    missing.push(name);
+                }
+            }
+            CacheState::Modified => modified.push(name),
+        }
+    }
+
+    if missing.is_empty() && modified.is_empty() {
+        return Ok(());
+    }
+
+    missing.sort_unstable();
+    modified.sort_unstable();
+
+    let mut msg = String::from("the package cache does not match stacy.lock\n");
+
+    if !modified.is_empty() {
+        msg.push_str(&format!(
+            "  modified since install: {}\n  \
+             These cached files no longer hash to the checksum stacy.lock records.\n  \
+             hint: run `stacy cache packages clean`, then `stacy install` to re-download them.\n",
+            modified.join(", ")
+        ));
+    }
+    if !missing.is_empty() {
+        msg.push_str(&format!(
+            "  not installed: {}\n  \
+             hint: run `stacy install`.\n",
+            missing.join(", ")
+        ));
+    }
+
+    Err(Error::Integrity(msg.trim_end().to_string()))
 }
 
 #[cfg(test)]

@@ -11,8 +11,8 @@ use crate::packages::lockfile::{
     add_package, create_lockfile, create_package_entry, load_lockfile, save_lockfile,
 };
 use crate::packages::net::NetDownloader;
-use crate::packages::ssc::SscDownloader;
-use crate::project::{PackageSource, Project};
+use crate::packages::ssc::{DownloadedFile, SscDownloader};
+use crate::project::{PackageEntry, PackageSource, Project};
 use std::path::{Path, PathBuf};
 
 /// Result of installing a package
@@ -36,7 +36,195 @@ pub struct InstallResult {
     pub required_stata_version: Option<String>,
 }
 
-/// Install a package from SSC
+/// A package fetched from its source, not yet written to the cache or lockfile.
+///
+/// Fetching and recording are separate steps: `add`/`update` record what they
+/// fetched as the new pin, while `install` checks what it fetched against the
+/// pin that already exists.
+struct ResolvedPackage {
+    /// The version the package itself names: the manifest's `Distribution-Date`,
+    /// a resolved commit SHA, or a local directory's content hash.
+    ///
+    /// `None` when the source names no version of its own. `add`/`update` then
+    /// invent one (`pin_version`), and `install` cannot use the version to
+    /// decide whether the pin is satisfied — the checksum is the only identity
+    /// such a package has.
+    declared_version: Option<String>,
+    /// Version to record when the source names none: today's date for SSC and
+    /// net packages, the git ref for GitHub ones.
+    fallback_version: String,
+    /// Files fetched from the source
+    files: Vec<DownloadedFile>,
+    /// Combined checksum of all fetched files
+    package_checksum: String,
+    /// Whether the download came from an SSC mirror (not the primary server)
+    from_mirror: bool,
+    /// Package names declared on the manifest's `Requires:` line
+    declared_deps: Vec<String>,
+    /// Minimum Stata version declared on the manifest's `Requires:` line
+    required_stata_version: Option<String>,
+    /// Commit SHA, for GitHub sources where it could be resolved
+    commit: Option<String>,
+}
+
+impl ResolvedPackage {
+    /// The version to record when this package is being pinned (`add`/`update`).
+    fn pin_version(&self) -> String {
+        self.declared_version
+            .clone()
+            .unwrap_or_else(|| self.fallback_version.clone())
+    }
+}
+
+/// Fetch a package from SSC.
+fn resolve_ssc(name: &str) -> Result<ResolvedPackage> {
+    let download = SscDownloader::new().download_package(name)?;
+
+    Ok(ResolvedPackage {
+        declared_version: download.manifest.distribution_date.clone(),
+        fallback_version: crate::utils::date::today_yyyymmdd(),
+        files: download.files,
+        package_checksum: download.package_checksum,
+        from_mirror: download.from_mirror,
+        declared_deps: download.manifest.requires,
+        required_stata_version: download.manifest.stata_version,
+        commit: None,
+    })
+}
+
+/// Fetch a package from GitHub. `git_ref` may be a branch, tag, or commit;
+/// when None the downloader tries `main`, then `master`.
+fn resolve_github(
+    name: &str,
+    user: &str,
+    repo: &str,
+    git_ref: Option<&str>,
+) -> Result<ResolvedPackage> {
+    let downloader = GitHubDownloader::new();
+    let download = downloader.download_package(name, user, repo, git_ref)?;
+
+    // Resolve the commit SHA for reproducibility (graceful degradation)
+    let commit = downloader.resolve_commit_sha(user, repo, &download.git_ref);
+
+    // The manifest's date names the version; failing that, the commit does.
+    // A git ref alone names nothing — `main` is whatever it points at today.
+    let declared_version = download.manifest.distribution_date.clone().or_else(|| {
+        commit
+            .as_ref()
+            .map(|sha| sha.get(..8).unwrap_or(sha.as_str()).to_string())
+    });
+
+    Ok(ResolvedPackage {
+        declared_version,
+        fallback_version: git_ref.unwrap_or("main").to_string(),
+        files: download.files,
+        package_checksum: download.package_checksum,
+        from_mirror: false, // GitHub packages don't use SSC mirrors
+        declared_deps: download.manifest.requires,
+        required_stata_version: download.manifest.stata_version,
+        commit,
+    })
+}
+
+/// Fetch a package from a net URL.
+fn resolve_net(name: &str, url: &str) -> Result<ResolvedPackage> {
+    let download = NetDownloader::new().download_package(name, url)?;
+
+    Ok(ResolvedPackage {
+        declared_version: download.manifest.distribution_date.clone(),
+        fallback_version: crate::utils::date::today_yyyymmdd(),
+        files: download.files,
+        package_checksum: download.package_checksum,
+        from_mirror: false,
+        declared_deps: download.manifest.requires,
+        required_stata_version: download.manifest.stata_version,
+        commit: None,
+    })
+}
+
+/// Read a package from a local directory (relative to the project root, or absolute).
+fn resolve_local(name: &str, path: &str, project_root: &Path) -> Result<ResolvedPackage> {
+    let dir = if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        project_root.join(path)
+    };
+
+    let download = local::scan_local_directory(name, &dir)?;
+
+    // Local packages have no manifest: the version is the short content hash,
+    // so the directory does name its own version.
+    let version = download.package_checksum[..8].to_string();
+
+    Ok(ResolvedPackage {
+        declared_version: Some(version.clone()),
+        fallback_version: version,
+        files: download.files,
+        package_checksum: download.package_checksum,
+        from_mirror: false,
+        declared_deps: Vec::new(),
+        required_stata_version: None,
+        commit: None,
+    })
+}
+
+/// Fetch a package from the source the lockfile records for it.
+fn resolve_from_source(
+    name: &str,
+    source: &PackageSource,
+    project_root: &Path,
+) -> Result<ResolvedPackage> {
+    match source {
+        PackageSource::SSC { name: ssc_name } => resolve_ssc(ssc_name),
+        PackageSource::GitHub { repo, tag, commit } => {
+            let (user, repo_name) = repo.split_once('/').ok_or_else(|| {
+                Error::Config(format!(
+                    "Invalid GitHub repo format: {} (want owner/repo)",
+                    repo
+                ))
+            })?;
+            // A locked commit SHA pins the exact tree; fall back to the tag.
+            let git_ref = commit.as_deref().unwrap_or(tag.as_str());
+            resolve_github(name, user, repo_name, Some(git_ref))
+        }
+        PackageSource::Net { url } => resolve_net(name, url),
+        PackageSource::Local { path } => resolve_local(name, path, project_root),
+    }
+}
+
+/// Record a freshly fetched package in the cache and the lockfile.
+///
+/// This is the `add`/`update` path: what the source served becomes the new pin.
+fn cache_and_lock(
+    name: &str,
+    resolved: ResolvedPackage,
+    source: PackageSource,
+    project_root: &Path,
+    group: &str,
+) -> Result<InstallResult> {
+    let version = resolved.pin_version();
+    let (_cache_dir, saved_files) = atomic_save_to_cache(&resolved.files, name, &version)?;
+
+    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
+    let was_update = lockfile.packages.contains_key(name);
+
+    let entry = create_package_entry(&version, source, &resolved.package_checksum, group);
+    add_package(&mut lockfile, name, entry);
+    save_lockfile(project_root, &lockfile)?;
+
+    Ok(InstallResult {
+        name: name.to_string(),
+        version,
+        files_installed: saved_files,
+        was_update,
+        from_mirror: resolved.from_mirror,
+        package_checksum: resolved.package_checksum,
+        declared_deps: resolved.declared_deps,
+        required_stata_version: resolved.required_stata_version,
+    })
+}
+
+/// Install a package from SSC, recording it in the lockfile.
 ///
 /// # Arguments
 /// * `name` - Package name to install
@@ -47,52 +235,9 @@ pub struct InstallResult {
 /// InstallResult with details about what was installed
 pub fn install_from_ssc(name: &str, project_root: &Path, group: &str) -> Result<InstallResult> {
     let name = name.to_lowercase();
-
-    // Download package
-    let downloader = SscDownloader::new();
-    let download = downloader.download_package(&name)?;
-
-    // Get version from manifest (use distribution date or today's date)
-    let version = download
-        .manifest
-        .distribution_date
-        .clone()
-        .unwrap_or_else(crate::utils::date::today_yyyymmdd);
-
-    // Save files to global cache atomically
-    let (_cache_dir, saved_files) = atomic_save_to_cache(&download.files, &name, &version)?;
-
-    // Load or create lockfile
-    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
-
-    // Check if this is an update
-    let was_update = lockfile.packages.contains_key(&name);
-
-    // Create package entry
-    let entry = create_package_entry(
-        &version,
-        PackageSource::SSC { name: name.clone() },
-        &download.package_checksum,
-        group,
-    );
-
-    // Update lockfile
-    add_package(&mut lockfile, &name, entry);
-    save_lockfile(project_root, &lockfile)?;
-
-    let from_mirror = download.from_mirror;
-    let package_checksum = download.package_checksum.clone();
-
-    Ok(InstallResult {
-        name,
-        version,
-        files_installed: saved_files,
-        was_update,
-        from_mirror,
-        package_checksum,
-        declared_deps: download.manifest.requires,
-        required_stata_version: download.manifest.stata_version,
-    })
+    let resolved = resolve_ssc(&name)?;
+    let source = PackageSource::SSC { name: name.clone() };
+    cache_and_lock(&name, resolved, source, project_root, group)
 }
 
 /// Install a package (auto-detect source)
@@ -108,7 +253,7 @@ pub fn install_package(
     }
 }
 
-/// Install a package from GitHub
+/// Install a package from GitHub, recording it in the lockfile.
 ///
 /// # Arguments
 /// * `name` - Package name (used to find {name}.pkg)
@@ -126,66 +271,16 @@ pub fn install_package_github(
     group: &str,
 ) -> Result<InstallResult> {
     let name = name.to_lowercase();
-    let git_ref_str = git_ref.unwrap_or("main");
-
-    // Download package from GitHub
-    let downloader = GitHubDownloader::new();
-    let download = downloader.download_package(&name, user, repo, git_ref)?;
-
-    // Resolve commit SHA for reproducibility (graceful degradation)
-    let commit_sha = downloader.resolve_commit_sha(user, repo, &download.git_ref);
-
-    // Get version from manifest, or use short SHA / git ref as fallback
-    let version = download
-        .manifest
-        .distribution_date
-        .clone()
-        .unwrap_or_else(|| {
-            if let Some(ref sha) = commit_sha {
-                sha[..8].to_string()
-            } else {
-                git_ref_str.to_string()
-            }
-        });
-
-    // Save files to global cache atomically
-    let (_cache_dir, saved_files) = atomic_save_to_cache(&download.files, &name, &version)?;
-
-    // Load or create lockfile
-    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
-
-    // Check if this is an update
-    let was_update = lockfile.packages.contains_key(&name);
-
-    // Create package entry
-    let entry = create_package_entry(
-        &version,
-        PackageSource::GitHub {
-            repo: format!("{}/{}", user, repo),
-            tag: git_ref_str.to_string(),
-            commit: commit_sha,
-        },
-        &download.package_checksum,
-        group,
-    );
-
-    // Update lockfile
-    add_package(&mut lockfile, &name, entry);
-    save_lockfile(project_root, &lockfile)?;
-
-    Ok(InstallResult {
-        name,
-        version,
-        files_installed: saved_files,
-        was_update,
-        from_mirror: false, // GitHub packages don't use SSC mirrors
-        package_checksum: download.package_checksum.clone(),
-        declared_deps: download.manifest.requires.clone(),
-        required_stata_version: download.manifest.stata_version.clone(),
-    })
+    let resolved = resolve_github(&name, user, repo, git_ref)?;
+    let source = PackageSource::GitHub {
+        repo: format!("{}/{}", user, repo),
+        tag: git_ref.unwrap_or("main").to_string(),
+        commit: resolved.commit.clone(),
+    };
+    cache_and_lock(&name, resolved, source, project_root, group)
 }
 
-/// Install a package from a net URL
+/// Install a package from a net URL, recording it in the lockfile.
 ///
 /// # Arguments
 /// * `name` - Package name
@@ -199,54 +294,14 @@ pub fn install_from_net(
     group: &str,
 ) -> Result<InstallResult> {
     let name = name.to_lowercase();
-
-    // Download package
-    let downloader = NetDownloader::new();
-    let download = downloader.download_package(&name, url)?;
-
-    // Get version from manifest distribution_date or today's date
-    let version = download
-        .manifest
-        .distribution_date
-        .clone()
-        .unwrap_or_else(crate::utils::date::today_yyyymmdd);
-
-    // Save files to global cache atomically
-    let (_cache_dir, saved_files) = atomic_save_to_cache(&download.files, &name, &version)?;
-
-    // Load or create lockfile
-    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
-
-    // Check if this is an update
-    let was_update = lockfile.packages.contains_key(&name);
-
-    // Create package entry
-    let entry = create_package_entry(
-        &version,
-        PackageSource::Net {
-            url: url.to_string(),
-        },
-        &download.package_checksum,
-        group,
-    );
-
-    // Update lockfile
-    add_package(&mut lockfile, &name, entry);
-    save_lockfile(project_root, &lockfile)?;
-
-    Ok(InstallResult {
-        name,
-        version,
-        files_installed: saved_files,
-        was_update,
-        from_mirror: false,
-        package_checksum: download.package_checksum,
-        declared_deps: download.manifest.requires,
-        required_stata_version: download.manifest.stata_version,
-    })
+    let resolved = resolve_net(&name, url)?;
+    let source = PackageSource::Net {
+        url: url.to_string(),
+    };
+    cache_and_lock(&name, resolved, source, project_root, group)
 }
 
-/// Install a package from a local directory
+/// Install a package from a local directory, recording it in the lockfile.
 ///
 /// # Arguments
 /// * `name` - Package name
@@ -260,53 +315,140 @@ pub fn install_from_local(
     group: &str,
 ) -> Result<InstallResult> {
     let name = name.to_lowercase();
-
-    // Resolve path relative to project root
-    let dir = if std::path::Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        project_root.join(path)
+    let resolved = resolve_local(&name, path, project_root)?;
+    let source = PackageSource::Local {
+        path: path.to_string(),
     };
+    cache_and_lock(&name, resolved, source, project_root, group)
+}
 
-    // Scan local directory
-    let download = local::scan_local_directory(&name, &dir)?;
+/// Install a package exactly as `stacy.lock` pins it.
+///
+/// This is the `stacy install` path, and it never writes `stacy.lock`: the
+/// lockfile is the input, not the output. What the source serves must match the
+/// pin, or the install fails with an `Error::Integrity` — installing a different
+/// package under the pinned name is exactly the drift the lockfile prevents.
+///
+/// Matching the pin means:
+///
+/// - The version, where the source names one. A `.pkg` with no
+///   `Distribution-Date` names no version — `add` recorded the date it fetched
+///   the package, which says nothing about the bytes — so there the pin is
+///   checked by checksum alone. Enforcing the version there would fail every
+///   cold-cache install made on a later day than the one that wrote the lock.
+/// - The checksum, whenever the lockfile records one and `verify` is on.
+///   `verify` is what `stacy install --no-verify` turns off.
+///
+/// A package whose source names no version and whose lockfile entry carries no
+/// checksum (lockfiles written before checksums) has nothing to check against,
+/// and installs as it did before.
+pub fn install_locked(
+    name: &str,
+    entry: &PackageEntry,
+    project_root: &Path,
+    verify: bool,
+) -> Result<InstallResult> {
+    let name = name.to_lowercase();
+    let resolved = resolve_from_source(&name, &entry.source, project_root)?;
 
-    // Version derived from combined checksum short hash (first 8 chars)
-    let version = download.package_checksum[..8].to_string();
+    if let Some(served) = resolved.declared_version.as_deref() {
+        if served != entry.version {
+            return Err(Error::Integrity(version_mismatch_message(
+                &name, entry, served,
+            )));
+        }
+    }
 
-    // Save files to global cache atomically
-    let (_cache_dir, saved_files) = atomic_save_to_cache(&download.files, &name, &version)?;
+    if verify {
+        if let Some(expected) = entry.checksum.as_deref() {
+            let expected = expected.strip_prefix("sha256:").unwrap_or(expected);
+            if resolved.package_checksum != expected {
+                return Err(Error::Integrity(checksum_mismatch_message(
+                    &name, entry, expected, &resolved,
+                )));
+            }
+        }
+    }
 
-    // Load or create lockfile
-    let mut lockfile = load_lockfile(project_root)?.unwrap_or_else(create_lockfile);
-
-    // Check if this is an update
-    let was_update = lockfile.packages.contains_key(&name);
-
-    // Create package entry
-    let entry = create_package_entry(
-        &version,
-        PackageSource::Local {
-            path: path.to_string(),
-        },
-        &download.package_checksum,
-        group,
-    );
-
-    // Update lockfile
-    add_package(&mut lockfile, &name, entry);
-    save_lockfile(project_root, &lockfile)?;
+    // Cached under the pinned version: that is the name `run` looks it up by.
+    let (_cache_dir, saved_files) = atomic_save_to_cache(&resolved.files, &name, &entry.version)?;
 
     Ok(InstallResult {
         name,
-        version,
+        version: entry.version.clone(),
         files_installed: saved_files,
-        was_update,
-        from_mirror: false,
-        package_checksum: download.package_checksum,
-        declared_deps: Vec::new(), // local packages have no manifest
-        required_stata_version: None,
+        was_update: false,
+        from_mirror: resolved.from_mirror,
+        package_checksum: resolved.package_checksum,
+        declared_deps: resolved.declared_deps,
+        required_stata_version: resolved.required_stata_version,
     })
+}
+
+/// Human-readable name of the place a package is fetched from.
+fn source_origin(source: &PackageSource) -> String {
+    match source {
+        PackageSource::SSC { .. } => "SSC".to_string(),
+        PackageSource::GitHub { repo, .. } => format!("GitHub ({})", repo),
+        PackageSource::Net { url } => url.clone(),
+        PackageSource::Local { path } => format!("the local directory {}", path),
+    }
+}
+
+/// Why the source cannot hand back the pinned version.
+fn source_pin_note(source: &PackageSource) -> &'static str {
+    match source {
+        PackageSource::SSC { .. } => {
+            "SSC serves only the current revision of a package, so once a pinned version \
+             leaves the package cache it cannot be downloaded again."
+        }
+        PackageSource::GitHub { .. } => "The repository no longer serves the pinned version.",
+        PackageSource::Net { .. } => "The URL no longer serves the pinned version.",
+        PackageSource::Local { .. } => {
+            "The directory's contents no longer match the pinned version."
+        }
+    }
+}
+
+fn version_mismatch_message(name: &str, entry: &PackageEntry, served: &str) -> String {
+    format!(
+        "{name}: stacy.lock pins version {pinned}, but {origin} serves {served}\n  \
+         {note}\n  \
+         hint: run `stacy update {name}` to move the pin to {served} (your results may change), \
+         or restore {pinned} into the package cache from a machine that still has it.",
+        name = name,
+        pinned = entry.version,
+        origin = source_origin(&entry.source),
+        served = served,
+        note = source_pin_note(&entry.source),
+    )
+}
+
+fn checksum_mismatch_message(
+    name: &str,
+    entry: &PackageEntry,
+    expected: &str,
+    resolved: &ResolvedPackage,
+) -> String {
+    let origin = if resolved.from_mirror {
+        "the SSC mirror".to_string()
+    } else {
+        source_origin(&entry.source)
+    };
+    format!(
+        "{name}: checksum mismatch for version {version}\n  \
+         stacy.lock records sha256:{expected}\n  \
+         {origin} serves sha256:{actual}\n  \
+         The source changed the package contents without changing its version.\n  \
+         hint: run `stacy update {name}` to re-lock it (your results may change).\n  \
+         `stacy install --no-verify` installs the served copy without checking it; \
+         since it will not match stacy.lock, `stacy run` then needs --no-verify too.",
+        name = name,
+        version = entry.version,
+        expected = expected,
+        origin = origin,
+        actual = resolved.package_checksum,
+    )
 }
 
 /// Check if a package version is installed in the global cache
