@@ -1636,9 +1636,9 @@ fn test_task_frozen_flag_exists() {
 }
 
 #[test]
-fn test_task_table_without_work_fails() {
-    // A table-form task whose work key is typo'd (serde drops unknown keys)
-    // must error, not succeed as a no-op (#92)
+fn test_task_table_with_typoed_work_key_fails() {
+    // A table-form task whose work key is typo'd must error rather than succeed
+    // as a no-op (#92). The unknown key is now named outright (#100).
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("stacy.toml"),
@@ -1648,6 +1648,30 @@ name = "test"
 [scripts.build]
 description = "Build everything"
 scripts = ["src/01_clean.do"]
+"#,
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("task")
+        .arg("build")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown field `scripts`"));
+}
+
+#[test]
+fn test_task_table_without_work_fails() {
+    // Every key is known, but none of them defines any work (#92).
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("stacy.toml"),
+        r#"[project]
+name = "test"
+
+[scripts.build]
+description = "Build everything"
 "#,
     )
     .unwrap();

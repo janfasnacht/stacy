@@ -81,7 +81,7 @@ impl Default for RunSection {
 /// Supports two formats:
 /// - Simple: just the source string, e.g., `estout = "ssc"` or `ftools = "github:sergiocorreia/ftools"`
 /// - Detailed: object with source and optional version, e.g., `{ source = "ssc", version = "1.0.0" }`
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(untagged)]
 pub enum PackageSpec {
     /// Simple format: just source string (e.g., "ssc" or "github:user/repo")
@@ -92,6 +92,40 @@ pub enum PackageSpec {
         #[serde(skip_serializing_if = "Option::is_none")]
         version: Option<String>,
     },
+}
+
+/// The detailed table, split out so `deny_unknown_fields` applies to it (#100).
+/// `{ source = "ssc", verison = "1.0.0" }` used to parse and drop the pin.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DetailedSpec {
+    source: String,
+    #[serde(default)]
+    version: Option<String>,
+}
+
+// Hand-written so a bad key inside the table is an error naming the key.
+// `#[serde(untagged)]` would report "data did not match any variant" instead.
+impl<'de> Deserialize<'de> for PackageSpec {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match toml::Value::deserialize(deserializer)? {
+            toml::Value::String(source) => Ok(PackageSpec::Simple(source)),
+            table @ toml::Value::Table(_) => {
+                let spec = DetailedSpec::deserialize(table).map_err(serde::de::Error::custom)?;
+                Ok(PackageSpec::Detailed {
+                    source: spec.source,
+                    version: spec.version,
+                })
+            }
+            other => Err(serde::de::Error::custom(format!(
+                "expected a source string or a table with `source`, found {}",
+                other.type_str()
+            ))),
+        }
+    }
 }
 
 impl PackageSpec {
@@ -276,7 +310,7 @@ pub struct ScriptsSection {
 /// analyze = { script = "src/02_analyze.do", description = "Run main analysis" }
 /// outputs = { parallel = ["tables", "figures"] }
 /// ```
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum TaskDef {
     /// Simple: just a script path - `clean = "src/01_clean.do"`
@@ -287,8 +321,33 @@ pub enum TaskDef {
     Complex(ComplexTask),
 }
 
+// Hand-written for the same reason as PackageSpec: a misspelled key in the
+// object form (`parralel = [...]`) must be an error, not a silent downgrade to
+// a plain script task (#100).
+impl<'de> Deserialize<'de> for TaskDef {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match toml::Value::deserialize(deserializer)? {
+            toml::Value::String(script) => Ok(TaskDef::Simple(PathBuf::from(script))),
+            array @ toml::Value::Array(_) => Vec::<String>::deserialize(array)
+                .map(TaskDef::Sequential)
+                .map_err(serde::de::Error::custom),
+            table @ toml::Value::Table(_) => ComplexTask::deserialize(table)
+                .map(TaskDef::Complex)
+                .map_err(serde::de::Error::custom),
+            other => Err(serde::de::Error::custom(format!(
+                "expected a script path, a list of task names, or a table, found {}",
+                other.type_str()
+            ))),
+        }
+    }
+}
+
 /// Complex task definition with additional options
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct ComplexTask {
     /// List of tasks to run in parallel
     #[serde(default)]
@@ -821,6 +880,50 @@ pipeline = ["clean", "analyze", "outputs"]
         };
         assert_eq!(spec.source(), "ssc");
         assert_eq!(spec.version(), Some("1.0.0"));
+    }
+
+    #[test]
+    fn test_package_spec_detailed_parses_with_its_version_pin() {
+        let config: Config = toml::from_str(
+            "[packages.dependencies]\nreghdfe = { source = \"ssc\", version = \"6.12.3\" }\n",
+        )
+        .unwrap();
+
+        let spec = &config.packages.dependencies["reghdfe"];
+        assert_eq!(spec.source(), "ssc");
+        assert_eq!(spec.version(), Some("6.12.3"));
+    }
+
+    #[test]
+    fn test_package_spec_rejects_unknown_key() {
+        // #100: `verison` used to parse and silently drop the pin.
+        let err = toml::from_str::<Config>(
+            "[packages.dependencies]\nreghdfe = { source = \"ssc\", verison = \"6.12.3\" }\n",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            err.contains("verison"),
+            "error should name the key: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_complex_task_rejects_unknown_key() {
+        // #100: a misspelled `parallel` used to degrade to a plain script task.
+        let err = toml::from_str::<Config>(
+            "[scripts]\nbuild = { script = \"x.do\", parralel = [\"a\"] }\n",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            err.contains("parralel"),
+            "error should name the key: {}",
+            err
+        );
     }
 
     #[test]

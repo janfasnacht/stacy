@@ -136,8 +136,10 @@ analyze = { script = "src/02_analyze.do", description = "Main estimates" }
 
 ### Unknown Keys Are Rejected
 
-Every key outside `[scripts]` (where the keys are your task names) must be one
-stacy knows. A key it does not know is an error, not a shrug:
+Task names under `[scripts]` are yours to pick. Every other key must be one stacy
+knows — including the keys inside a package table (`source`, `version`) and a task
+table (`script`, `args`, `parallel`, `description`). A key it does not know is an
+error, not a shrug:
 
 ```
 $ stacy lock
@@ -150,7 +152,9 @@ hint: declare these under [packages.dependencies]
 ```
 
 Dependencies declared under the wrong key used to be dropped without a word, and
-`stacy lock` then reported success on zero packages.
+`stacy lock` then reported success on zero packages. The same went for a typo
+inside a package table: `{ source = "ssc", verison = "1.0.0" }` parsed, lost the
+version pin, and resolved the latest release instead.
 
 ### Stata Binary
 

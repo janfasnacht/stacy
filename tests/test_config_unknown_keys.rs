@@ -54,6 +54,41 @@ fn test_run_rejects_unknown_key() {
 }
 
 #[test]
+fn test_unknown_key_in_a_package_table_is_rejected() {
+    let temp = TempDir::new().unwrap();
+    // A typo in `version` used to drop the pin and resolve the latest instead.
+    fs::write(
+        temp.path().join("stacy.toml"),
+        "[project]\nname = \"t\"\n\n[packages.dependencies]\nestout = { source = \"ssc\", verison = \"1.0.0\" }\n",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("env")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("verison"));
+}
+
+#[test]
+fn test_unknown_key_in_a_task_table_is_rejected() {
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("stacy.toml"),
+        "[project]\nname = \"t\"\n\n[scripts]\nbuild = { script = \"x.do\", parralel = [\"a\"] }\n",
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("env")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("parralel"));
+}
+
+#[test]
 fn test_valid_config_still_loads() {
     let temp = TempDir::new().unwrap();
     fs::write(
@@ -73,9 +108,13 @@ ado = ["ado"]
 
 [packages.dependencies]
 estout = "ssc"
+reghdfe = { source = "github:sergiocorreia/reghdfe", version = "v6.12.3" }
 
 [scripts]
 clean = "src/01_clean.do"
+all = ["clean"]
+analyze = { script = "src/02_analyze.do", args = ["--fast"], description = "Estimates" }
+outputs = { parallel = ["clean"] }
 "#,
     )
     .unwrap();
