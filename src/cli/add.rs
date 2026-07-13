@@ -281,8 +281,19 @@ pub fn execute(args: &AddArgs) -> Result<()> {
         OutputFormat::Human => print_human_summary(&output),
     }
 
-    if failed_count > 0 && added_count == 0 {
-        std::process::exit(1);
+    // Any package that failed to install is a package the caller asked for and
+    // did not get — a partial batch is a failure, not a success.
+    if failed_count > 0 {
+        let failed_names: Vec<&str> = results
+            .iter()
+            .filter(|r| !r.success)
+            .map(|r| r.name.as_str())
+            .collect();
+        return Err(Error::Config(format!(
+            "{} package(s) failed to add: {}",
+            failed_count,
+            failed_names.join(", ")
+        )));
     }
 
     Ok(())

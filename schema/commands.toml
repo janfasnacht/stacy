@@ -334,8 +334,7 @@ status = { type = "string", json_path = "status", stata_type = "local", descript
 
 [commands.install.exit_codes]
 0 = "Success"
-1 = "Installation failed"
-3 = "Package not found"
+1 = "A package failed to install or failed checksum verification"
 
 [[commands.install.examples]]
 title = "Install from lockfile"
@@ -362,6 +361,11 @@ dependency graph, detects circular dependencies, and identifies missing files.
 
 `require` statements (including `cap require` and `capture require`) are
 recognized as package dependencies and shown as leaf nodes in the tree.
+
+A path that holds a Stata macro, such as `do "$root/prep.do"`, only points
+somewhere once Stata expands the macro. stacy reads the script but does not run
+it, so it lists the path as written and marks it as resolved at run time. Such a
+path is not a missing file and does not fail the command.
 """
 see_also = ["run"]
 
@@ -380,10 +384,12 @@ missing_count = { type = "int", json_path = "summary.missing_paths", stata_type 
 
 # Locals
 script = { type = "path", json_path = "script", stata_type = "local", description = "Path to analyzed script" }
+status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
 
 [commands.deps.exit_codes]
 0 = "Analysis complete"
-3 = "Script not found"
+1 = "Circular dependencies detected"
+3 = "Script not found, or a dependency is missing"
 
 [[commands.deps.examples]]
 title = "Show dependency tree"
@@ -473,7 +479,7 @@ group = { type = "string", json_path = "summary.group", stata_type = "local", de
 
 [commands.add.exit_codes]
 0 = "Success"
-1 = "All packages failed to add"
+1 = "A package failed to add"
 
 [[commands.add.examples]]
 title = "Add from SSC"
@@ -540,6 +546,9 @@ long_description = """
 Checks for newer versions of installed packages and updates them. Updates both
 `stacy.toml` and `stacy.lock` to reflect new versions. Use `--dry-run` to preview
 changes without applying them.
+
+A `local:` package lives in the project, so there is no source to check for a
+newer version. It is reported as skipped and does not fail the command.
 """
 see_also = ["outdated", "install", "lock"]
 
@@ -553,6 +562,7 @@ json = { type = "bool", description = "JSON output (internal)" }
 updated = { type = "int", json_path = "summary.updated", stata_type = "scalar", description = "Number of packages updated" }
 updates_available = { type = "int", json_path = "summary.updates_available", stata_type = "scalar", description = "Number of packages with updates available" }
 failed = { type = "int", json_path = "summary.failed", stata_type = "scalar", description = "Number of packages that failed to update" }
+skipped = { type = "int", json_path = "summary.skipped", stata_type = "scalar", description = "Number of packages with no source to check (local packages)" }
 total = { type = "int", json_path = "summary.total", stata_type = "scalar", description = "Total packages checked" }
 dry_run = { type = "bool", json_path = "dry_run", stata_type = "scalar", description = "Whether this was a dry run (1=yes, 0=no)" }
 
@@ -561,7 +571,7 @@ status = { type = "string", json_path = "status", stata_type = "local", descript
 
 [commands.update.exit_codes]
 0 = "Success"
-1 = "All updates failed"
+1 = "A package failed to update, or its latest version could not be checked"
 
 [[commands.update.examples]]
 title = "Update all packages"
@@ -638,6 +648,7 @@ json = { type = "bool", description = "JSON output (internal)" }
 # Scalars
 outdated_count = { type = "int", json_path = "outdated_count", stata_type = "scalar", description = "Number of outdated packages" }
 total_count = { type = "int", json_path = "total_count", stata_type = "scalar", description = "Total packages checked" }
+failed = { type = "int", json_path = "failed", stata_type = "scalar", description = "Number of packages whose latest version could not be checked" }
 
 # Locals (comma-separated lists)
 status = { type = "string", json_path = "status", stata_type = "local", description = "'success' or 'error'" }
@@ -647,6 +658,7 @@ outdated_latests = { type = "string", json_path = "packages", stata_type = "loca
 
 [commands.outdated.exit_codes]
 0 = "Success"
+1 = "A package's latest version could not be checked"
 
 [[commands.outdated.examples]]
 title = "Check for updates"
@@ -676,6 +688,7 @@ json = { type = "bool", description = "JSON output (internal)" }
 [commands.lock.returns]
 # Scalars
 package_count = { type = "int", json_path = "package_count", stata_type = "scalar", description = "Number of packages in lockfile" }
+failed = { type = "int", json_path = "failed", stata_type = "scalar", description = "Number of packages that could not be resolved" }
 updated = { type = "bool", json_path = "updated", stata_type = "scalar", description = "Whether lockfile was updated (1=yes, 0=no)" }
 in_sync = { type = "bool", json_path = "in_sync", stata_type = "scalar", description = "Whether lockfile is in sync (1=yes, 0=no)" }
 
@@ -684,7 +697,7 @@ status = { type = "string", json_path = "status", stata_type = "local", descript
 
 [commands.lock.exit_codes]
 0 = "Success / in sync"
-1 = "Out of sync (with --check)"
+1 = "A package could not be resolved, or the lockfile is out of sync (with --check)"
 
 [[commands.lock.examples]]
 title = "Generate lockfile"

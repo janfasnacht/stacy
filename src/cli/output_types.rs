@@ -704,6 +704,8 @@ pub struct UpdateOutput {
     pub dry_run: bool,
     /// Number of packages that failed to update
     pub failed: i32,
+    /// Number of packages skipped (no source to check, e.g. local)
+    pub skipped: i32,
     /// 'success', 'partial', or 'error'
     pub status: String,
     /// Total packages checked
@@ -729,6 +731,7 @@ impl CommandOutput for UpdateOutput {
             self.updates_available as i64,
         ));
         lines.push(format_stata_scalar_int("failed", self.failed as i64));
+        lines.push(format_stata_scalar_int("skipped", self.skipped as i64));
         lines.push(format_stata_scalar_int("total", self.total as i64));
         lines.push(format_stata_scalar_bool("dry_run", self.dry_run));
         lines.join("\n")
@@ -754,6 +757,8 @@ pub struct DepsOutput {
     pub unique_count: i32,
     /// Path to analyzed script
     pub script: PathBuf,
+    /// 'success' or 'error'
+    pub status: String,
 }
 
 impl CommandOutput for DepsOutput {
@@ -764,6 +769,7 @@ impl CommandOutput for DepsOutput {
     fn to_stata(&self) -> String {
         let mut lines = Vec::new();
         lines.push("* stacy deps output".to_string());
+        lines.push(format_stata_local("status", &self.status));
         lines.push(format_stata_local(
             "script",
             &self.script.display().to_string(),
@@ -956,6 +962,11 @@ pub struct OutdatedOutput {
     pub outdated_count: usize,
     /// Total packages checked
     pub total_count: usize,
+    /// Number of packages whose latest version could not be checked
+    pub failed: usize,
+    /// Error summary (present iff status == "error")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
     /// List of outdated packages
     pub packages: Vec<OutdatedPackageInfo>,
 }
@@ -987,6 +998,7 @@ impl CommandOutput for OutdatedOutput {
             self.outdated_count,
         ));
         lines.push(format_stata_scalar_usize("total_count", self.total_count));
+        lines.push(format_stata_scalar_usize("failed", self.failed));
         // Create comma-separated lists
         let names: Vec<_> = self.packages.iter().map(|p| p.name.as_str()).collect();
         let currents: Vec<_> = self.packages.iter().map(|p| p.current.as_str()).collect();
@@ -994,6 +1006,9 @@ impl CommandOutput for OutdatedOutput {
         lines.push(format_stata_local("outdated_names", &names.join(",")));
         lines.push(format_stata_local("outdated_currents", &currents.join(",")));
         lines.push(format_stata_local("outdated_latests", &latests.join(",")));
+        if let Some(msg) = &self.error {
+            lines.push(format_stata_local("error", msg));
+        }
         lines.join("\n")
     }
 }
@@ -1013,6 +1028,11 @@ pub struct LockOutput {
     pub updated: bool,
     /// Whether lockfile is in sync with config (for --check)
     pub in_sync: bool,
+    /// Number of packages that could not be resolved
+    pub failed: usize,
+    /// Error summary (present iff status == "error")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 impl CommandOutput for LockOutput {
@@ -1030,6 +1050,10 @@ impl CommandOutput for LockOutput {
         ));
         lines.push(format_stata_scalar_bool("updated", self.updated));
         lines.push(format_stata_scalar_bool("in_sync", self.in_sync));
+        lines.push(format_stata_scalar_usize("failed", self.failed));
+        if let Some(msg) = &self.error {
+            lines.push(format_stata_local("error", msg));
+        }
         lines.join("\n")
     }
 }
@@ -1309,9 +1333,11 @@ mod tests {
             has_missing: true,
             circular_count: 0,
             missing_count: 2,
+            status: "error".to_string(),
         };
 
         let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"error\""));
         assert!(stata.contains("global stacy_script \"/path/to/main.do\""));
         assert!(stata.contains("scalar stacy_unique_count = 5"));
         assert!(stata.contains("scalar stacy_has_circular = 0"));
@@ -1698,6 +1724,7 @@ mod tests {
         let output = UpdateOutput {
             dry_run: true,
             failed: 0,
+            skipped: 1,
             status: "success".to_string(),
             total: 5,
             updates_available: 2,
@@ -1709,6 +1736,7 @@ mod tests {
         assert!(stata.contains("scalar stacy_updated = 0"));
         assert!(stata.contains("scalar stacy_updates_available = 2"));
         assert!(stata.contains("scalar stacy_failed = 0"));
+        assert!(stata.contains("scalar stacy_skipped = 1"));
         assert!(stata.contains("scalar stacy_total = 5"));
         assert!(stata.contains("scalar stacy_dry_run = 1"));
     }
@@ -1809,6 +1837,8 @@ mod tests {
             status: "success".to_string(),
             outdated_count: 1,
             total_count: 3,
+            failed: 0,
+            error: None,
             packages: vec![OutdatedPackageInfo {
                 name: "estout".to_string(),
                 current: "3.30".to_string(),
@@ -1821,6 +1851,7 @@ mod tests {
         assert!(stata.contains("global stacy_status \"success\""));
         assert!(stata.contains("scalar stacy_outdated_count = 1"));
         assert!(stata.contains("scalar stacy_total_count = 3"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
         assert!(stata.contains("global stacy_outdated_names \"estout\""));
         assert!(stata.contains("global stacy_outdated_currents \"3.30\""));
         assert!(stata.contains("global stacy_outdated_latests \"3.31\""));
@@ -1837,6 +1868,8 @@ mod tests {
             package_count: 5,
             updated: false,
             in_sync: true,
+            failed: 0,
+            error: None,
         };
 
         let stata = output.to_stata();
@@ -1844,6 +1877,25 @@ mod tests {
         assert!(stata.contains("scalar stacy_package_count = 5"));
         assert!(stata.contains("scalar stacy_updated = 0"));
         assert!(stata.contains("scalar stacy_in_sync = 1"));
+        assert!(stata.contains("scalar stacy_failed = 0"));
+    }
+
+    #[test]
+    fn test_lock_output_to_stata_reports_unresolved_packages() {
+        let output = LockOutput {
+            status: "error".to_string(),
+            package_count: 0,
+            updated: false,
+            in_sync: false,
+            failed: 1,
+            error: Some("1 package(s) could not be resolved: badpkg".to_string()),
+        };
+
+        let stata = output.to_stata();
+        assert!(stata.contains("global stacy_status \"error\""));
+        assert!(stata.contains("scalar stacy_failed = 1"));
+        assert!(stata.contains("global stacy_error"));
+        assert!(!stata.contains("global stacy_status \"success\""));
     }
 
     // =========================================================================
@@ -2069,6 +2121,7 @@ mod tests {
                 UpdateOutput {
                     dry_run: false,
                     failed: 0,
+                    skipped: 0,
                     status: "success".to_string(),
                     total: 2,
                     updates_available: 1,
@@ -2085,6 +2138,7 @@ mod tests {
                     has_missing: false,
                     circular_count: 0,
                     missing_count: 0,
+                    status: "success".to_string(),
                 }
                 .to_stata(),
             ),
@@ -2128,6 +2182,8 @@ mod tests {
                     status: "success".to_string(),
                     outdated_count: 0,
                     total_count: 0,
+                    failed: 0,
+                    error: None,
                     packages: vec![],
                 }
                 .to_stata(),
@@ -2139,6 +2195,8 @@ mod tests {
                     package_count: 0,
                     updated: false,
                     in_sync: true,
+                    failed: 0,
+                    error: None,
                 }
                 .to_stata(),
             ),

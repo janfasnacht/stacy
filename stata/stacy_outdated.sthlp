@@ -32,6 +32,7 @@
 
 {synoptset 25 tabbed}{...}
 {p2col 5 25 29 2: Scalars}{p_end}
+{synopt:{cmd:r(failed)}}Number of packages whose latest version could not be checked{p_end}
 {synopt:{cmd:r(outdated_count)}}Number of outdated packages{p_end}
 {synopt:{cmd:r(total_count)}}Total packages checked{p_end}
 

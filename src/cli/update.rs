@@ -5,8 +5,11 @@
 use crate::cli::output_format::OutputFormat;
 use crate::cli::output_types::{CommandOutput, UpdateOutput};
 use crate::error::{Error, Result};
+use crate::packages::github::GitHubDownloader;
 use crate::packages::installer::{install_from_ssc, install_package_github};
 use crate::packages::lockfile::{load_lockfile, save_lockfile};
+use crate::packages::net::NetDownloader;
+use crate::packages::ssc::SscDownloader;
 use crate::project::config::load_config;
 use crate::project::{PackageSource, Project};
 use clap::Args;
@@ -31,6 +34,37 @@ pub struct UpdateArgs {
     pub format: OutputFormat,
 }
 
+/// Outcome of a version check (dry run) or an install (real update)
+struct Check {
+    new_version: String,
+    has_update: bool,
+}
+
+impl Check {
+    fn from_version(new_version: String, old_version: &str) -> Self {
+        let has_update = new_version != old_version;
+        Self {
+            new_version,
+            has_update,
+        }
+    }
+}
+
+/// What `update` did with one package
+enum Outcome {
+    /// The source was asked for its latest version, and — outside a dry run —
+    /// the package was installed from it
+    Checked(Check),
+    /// There is no source to ask: the reason is carried for the report
+    Skipped(String),
+}
+
+/// Latest version from a manifest's distribution date, defaulting to today
+/// (the same rule the installers use when a package declares no date).
+fn manifest_version(distribution_date: Option<String>) -> String {
+    distribution_date.unwrap_or_else(crate::utils::date::today_yyyymmdd)
+}
+
 /// Result of checking/updating a single package
 #[derive(Debug)]
 struct UpdatedPackage {
@@ -39,6 +73,7 @@ struct UpdatedPackage {
     new_version: Option<String>,
     updated: bool,
     has_update: bool,
+    skipped: bool,
     error: Option<String>,
 }
 
@@ -92,28 +127,46 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
     }
 
     let mut results: Vec<UpdatedPackage> = Vec::new();
+    let ssc_downloader = SscDownloader::new();
+    let github_downloader = GitHubDownloader::new();
+    let net_downloader = NetDownloader::new();
 
     for pkg_name in &packages_to_update {
         let entry = lockfile.packages.get(pkg_name).unwrap();
         let old_version = entry.version.clone();
 
-        // Try to update the package
+        // Try to update the package. A dry run queries the source for the
+        // latest version but installs nothing; anything it cannot check is a
+        // failure, not an "up to date".
         let group = entry.group.as_str();
-        let update_result = match &entry.source {
+        let update_result: Result<Outcome> = match &entry.source {
             PackageSource::SSC { name: _ } => {
                 if args.dry_run {
-                    // For dry run, we'd need to check the latest version without installing
-                    // For now, we'll just report that an update check was done
-                    Ok(None)
+                    ssc_downloader.get_manifest(pkg_name).map(|m| {
+                        Outcome::Checked(Check::from_version(
+                            manifest_version(m.distribution_date),
+                            &old_version,
+                        ))
+                    })
                 } else {
-                    install_from_ssc(pkg_name, &project.root, group).map(|r| Some(r.version))
+                    install_from_ssc(pkg_name, &project.root, group)
+                        .map(|r| Outcome::Checked(Check::from_version(r.version, &old_version)))
                 }
             }
             PackageSource::GitHub { repo, tag, .. } => {
                 let parts: Vec<&str> = repo.split('/').collect();
                 if parts.len() == 2 {
                     if args.dry_run {
-                        Ok(None)
+                        // GitHub packages are locked by tag, so compare tags
+                        // rather than the recorded distribution date.
+                        github_downloader
+                            .check_for_updates(parts[0], parts[1], tag)
+                            .map(|info| {
+                                Outcome::Checked(Check {
+                                    new_version: info.latest_tag.unwrap_or_else(|| tag.clone()),
+                                    has_update: info.has_update,
+                                })
+                            })
                     } else {
                         install_package_github(
                             pkg_name,
@@ -123,19 +176,26 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                             &project.root,
                             group,
                         )
-                        .map(|r| Some(r.version))
+                        .map(|r| Outcome::Checked(Check::from_version(r.version, &old_version)))
                     }
                 } else {
                     Err(Error::Config(format!("Invalid repo format: {}", repo)))
                 }
             }
-            PackageSource::Local { path } => Err(Error::Config(format!(
-                "Cannot update local package: {}",
-                path
-            ))),
+            // A local package is a directory in the project, not something to
+            // fetch: there is no newer version to find. Skipping it is the
+            // right answer, not a failure — the same call `outdated` makes.
+            PackageSource::Local { path } => {
+                Ok(Outcome::Skipped(format!("local package at {}", path)))
+            }
             PackageSource::Net { url } => {
                 if args.dry_run {
-                    Ok(None)
+                    net_downloader.get_manifest(pkg_name, url).map(|m| {
+                        Outcome::Checked(Check::from_version(
+                            manifest_version(m.distribution_date),
+                            &old_version,
+                        ))
+                    })
                 } else {
                     crate::packages::installer::install_from_net(
                         pkg_name,
@@ -143,15 +203,16 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                         &project.root,
                         group,
                     )
-                    .map(|r| Some(r.version))
+                    .map(|r| Outcome::Checked(Check::from_version(r.version, &old_version)))
                 }
             }
         };
 
         match update_result {
-            Ok(new_version_opt) => {
-                let new_version = new_version_opt.unwrap_or_else(|| old_version.clone());
-                let has_update = new_version != old_version;
+            Ok(Outcome::Checked(Check {
+                new_version,
+                has_update,
+            })) => {
                 let updated = !args.dry_run && has_update;
 
                 if format == OutputFormat::Human {
@@ -174,6 +235,22 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                     new_version: Some(new_version),
                     updated,
                     has_update,
+                    skipped: false,
+                    error: None,
+                });
+            }
+            Ok(Outcome::Skipped(reason)) => {
+                if format == OutputFormat::Human {
+                    println!("  = {} (skipped: {})", pkg_name, reason);
+                }
+
+                results.push(UpdatedPackage {
+                    name: pkg_name.clone(),
+                    new_version: Some(old_version.clone()),
+                    old_version,
+                    updated: false,
+                    has_update: false,
+                    skipped: true,
                     error: None,
                 });
             }
@@ -187,6 +264,7 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
                     new_version: None,
                     updated: false,
                     has_update: false,
+                    skipped: false,
                     error: Some(e.to_string()),
                 });
             }
@@ -207,6 +285,7 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
     let updated_count = results.iter().filter(|r| r.updated).count() as i32;
     let updates_available = results.iter().filter(|r| r.has_update).count() as i32;
     let failed_count = results.iter().filter(|r| r.error.is_some()).count() as i32;
+    let skipped_count = results.iter().filter(|r| r.skipped).count() as i32;
 
     let status = if failed_count > 0 && updated_count == 0 {
         "error"
@@ -221,6 +300,7 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
         updated: updated_count,
         updates_available,
         failed: failed_count,
+        skipped: skipped_count,
         total: results.len() as i32,
         dry_run: args.dry_run,
     };
@@ -232,8 +312,21 @@ pub fn execute(args: &UpdateArgs) -> Result<()> {
         OutputFormat::Human => print_human_summary(&output, args.dry_run),
     }
 
-    if failed_count > 0 && updated_count == 0 {
-        std::process::exit(1);
+    // A package that could not be updated (or, in a dry run, could not be
+    // checked) leaves the request unfinished, even if others succeeded.
+    if failed_count > 0 {
+        let failed_names: Vec<&str> = results
+            .iter()
+            .filter(|r| r.error.is_some())
+            .map(|r| r.name.as_str())
+            .collect();
+        let verb = if args.dry_run { "checked" } else { "updated" };
+        return Err(Error::Config(format!(
+            "{} package(s) could not be {}: {}",
+            failed_count,
+            verb,
+            failed_names.join(", ")
+        )));
     }
 
     Ok(())
@@ -251,6 +344,7 @@ fn print_json_output(results: &[UpdatedPackage], output: &UpdateOutput) {
                 "new_version": r.new_version,
                 "updated": r.updated,
                 "has_update": r.has_update,
+                "skipped": r.skipped,
                 "error": r.error,
             })
         })
@@ -264,6 +358,7 @@ fn print_json_output(results: &[UpdatedPackage], output: &UpdateOutput) {
             "updated": output.updated,
             "updates_available": output.updates_available,
             "failed": output.failed,
+            "skipped": output.skipped,
             "total": output.total,
         }
     });
@@ -280,13 +375,17 @@ fn print_human_summary(output: &UpdateOutput, dry_run: bool) {
                 "Would update {} package(s). Run without --dry-run to apply.",
                 output.updates_available
             );
-        } else {
+        } else if output.failed == 0 {
+            // Only claim everything is current when every check succeeded.
             println!("All packages are up to date.");
         }
     } else {
         let mut summary = Vec::new();
         if output.updated > 0 {
             summary.push(format!("{} updated", output.updated));
+        }
+        if output.skipped > 0 {
+            summary.push(format!("{} skipped", output.skipped));
         }
         if output.failed > 0 {
             summary.push(format!("{} failed", output.failed));

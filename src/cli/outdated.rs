@@ -47,6 +47,8 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
             status: "success".to_string(),
             outdated_count: 0,
             total_count: 0,
+            failed: 0,
+            error: None,
             packages: vec![],
         };
 
@@ -67,6 +69,8 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
     let github_downloader = GitHubDownloader::new();
     let mut outdated: Vec<OutdatedInfo> = Vec::new();
     let mut checked_count = 0;
+    // Packages whose latest version could not be determined.
+    let mut failures: Vec<String> = Vec::new();
 
     for (name, entry) in &lockfile.packages {
         match &entry.source {
@@ -92,8 +96,9 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
                         }
                     }
                     Err(e) => {
+                        failures.push(name.clone());
                         if format == OutputFormat::Human {
-                            eprintln!("  Warning: Could not check {}: {}", name, e);
+                            eprintln!("  x could not check {}: {}", name, e);
                         }
                     }
                 }
@@ -120,13 +125,20 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
                             }
                         }
                         Err(e) => {
+                            failures.push(name.clone());
                             if format == OutputFormat::Human {
-                                eprintln!("  Warning: Could not check {}: {}", name, e);
+                                eprintln!("  x could not check {}: {}", name, e);
                             }
                         }
                     }
-                } else if format == OutputFormat::Human {
-                    eprintln!("  Warning: Invalid repo format for {}: {}", name, repo);
+                } else {
+                    failures.push(name.clone());
+                    if format == OutputFormat::Human {
+                        eprintln!(
+                            "  x could not check {}: invalid repo format '{}'",
+                            name, repo
+                        );
+                    }
                 }
             }
             PackageSource::Local { path } => {
@@ -158,10 +170,26 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
         })
         .collect();
 
+    let error_message = if failures.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "{} package(s) could not be checked: {}",
+            failures.len(),
+            failures.join(", ")
+        ))
+    };
+
     let output = OutdatedOutput {
-        status: "success".to_string(),
+        status: if error_message.is_some() {
+            "error".to_string()
+        } else {
+            "success".to_string()
+        },
         outdated_count: outdated.len(),
         total_count: checked_count,
+        failed: failures.len(),
+        error: error_message.clone(),
         packages: output_packages,
     };
 
@@ -170,7 +198,10 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
         OutputFormat::Stata => println!("{}", output.to_stata()),
         OutputFormat::Human => {
             if outdated.is_empty() {
-                println!("All packages are up to date.");
+                // Only claim everything is current when every check succeeded.
+                if failures.is_empty() {
+                    println!("All packages are up to date.");
+                }
             } else {
                 // Calculate column widths
                 let name_width = outdated.iter().map(|p| p.name.len()).max().unwrap_or(10);
@@ -218,6 +249,10 @@ pub fn execute(args: &OutdatedArgs) -> Result<()> {
                 println!("{} {} updates available.", outdated.len(), pkg_word);
             }
         }
+    }
+
+    if let Some(msg) = error_message {
+        return Err(Error::Config(msg));
     }
 
     Ok(())

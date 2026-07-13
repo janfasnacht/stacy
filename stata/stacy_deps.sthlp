@@ -55,6 +55,7 @@
 
 {p2col 5 25 29 2: Macros}{p_end}
 {synopt:{cmd:r(script)}}Path to analyzed script{p_end}
+{synopt:{cmd:r(status)}}'success' or 'error'{p_end}
 
 
 {marker examples}{...}

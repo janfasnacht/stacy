@@ -11,6 +11,7 @@
         stacy_outdated 
 
     Returns:
+        r(failed              ) - Number of packages whose latest version could not be checked (scalar)
         r(outdated_count      ) - Number of outdated packages (scalar)
         r(total_count         ) - Total packages checked (scalar)
         r(outdated_currents   ) - Comma-separated current versions (local)
@@ -31,6 +32,11 @@ program define stacy_outdated, rclass
     local exec_rc = r(exit_code)
 
     * Map parsed values to r() returns
+    capture confirm scalar stacy_failed
+    if _rc == 0 {
+        return scalar failed = scalar(stacy_failed)
+    }
+
     capture confirm scalar stacy_outdated_count
     if _rc == 0 {
         return scalar outdated_count = scalar(stacy_outdated_count)

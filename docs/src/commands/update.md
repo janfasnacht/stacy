@@ -14,6 +14,9 @@ Checks for newer versions of installed packages and updates them. Updates both
 `stacy.toml` and `stacy.lock` to reflect new versions. Use `--dry-run` to preview
 changes without applying them.
 
+A `local:` package lives in the project, so there is no source to check for a
+newer version. It is reported as skipped and does not fail the command.
+
 ## Arguments
 
 | Argument | Description |
@@ -51,7 +54,7 @@ stacy update --dry-run
 | Code | Meaning |
 |------|--------|
 | 0 | Success |
-| 1 | All updates failed |
+| 1 | A package failed to update, or its latest version could not be checked |
 
 See [Exit Codes Reference](../reference/exit-codes.md) for details.
 

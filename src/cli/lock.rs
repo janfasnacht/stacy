@@ -84,6 +84,12 @@ pub fn execute(args: &LockArgs) -> Result<()> {
             package_count: lockfile.packages.len(),
             updated: false,
             in_sync,
+            failed: 0,
+            error: if in_sync {
+                None
+            } else {
+                Some("Lockfile is out of sync with stacy.toml".to_string())
+            },
         };
 
         match format {
@@ -131,6 +137,8 @@ pub fn execute(args: &LockArgs) -> Result<()> {
     let mut updated = false;
     let mut added_count = 0;
     let mut removed_count = 0;
+    // Packages in stacy.toml that could not be recorded in the lockfile.
+    let mut failures: Vec<String> = Vec::new();
 
     // Add packages from config that aren't in lockfile
     let github_downloader = GitHubDownloader::new();
@@ -172,8 +180,9 @@ pub fn execute(args: &LockArgs) -> Result<()> {
                     }
                 }
                 Err(e) => {
+                    failures.push(name.to_string());
                     if format == OutputFormat::Human {
-                        eprintln!("  Warning: Could not resolve {}: {}", name, e);
+                        eprintln!("  x could not resolve {}: {}", name, e);
                     }
                 }
             }
@@ -236,15 +245,29 @@ pub fn execute(args: &LockArgs) -> Result<()> {
                         }
                     }
                     Err(e) => {
+                        failures.push(name.to_string());
                         if format == OutputFormat::Human {
-                            eprintln!("  Warning: Could not resolve {}: {}", name, e);
+                            eprintln!("  x could not resolve {}: {}", name, e);
                         }
                     }
                 }
-            } else if format == OutputFormat::Human {
+            } else {
+                failures.push(name.to_string());
+                if format == OutputFormat::Human {
+                    eprintln!(
+                        "  x could not resolve {}: invalid GitHub source '{}'. Use github:user/repo",
+                        name, source_str
+                    );
+                }
+            }
+        } else {
+            // net: and local: packages carry no resolvable version — they are
+            // recorded in the lockfile by `stacy add`, not by `stacy lock`.
+            failures.push(name.to_string());
+            if format == OutputFormat::Human {
                 eprintln!(
-                    "  Warning: Invalid GitHub source for {}: {}",
-                    name, source_str
+                    "  x could not resolve {}: '{}' sources are recorded by `stacy add {} --source {}`",
+                    name, source_str, name, source_str
                 );
             }
         }
@@ -303,11 +326,27 @@ pub fn execute(args: &LockArgs) -> Result<()> {
         save_lockfile(&project.root, &lockfile)?;
     }
 
+    let error_message = if failures.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "{} package(s) could not be resolved: {}",
+            failures.len(),
+            failures.join(", ")
+        ))
+    };
+
     let output = LockOutput {
-        status: "success".to_string(),
+        status: if error_message.is_some() {
+            "error".to_string()
+        } else {
+            "success".to_string()
+        },
         package_count: lockfile.packages.len(),
         updated,
-        in_sync: true,
+        in_sync: failures.is_empty(),
+        failed: failures.len(),
+        error: error_message.clone(),
     };
 
     match format {
@@ -331,13 +370,17 @@ pub fn execute(args: &LockArgs) -> Result<()> {
                     summary.join(", "),
                     lockfile.packages.len()
                 );
-            } else {
+            } else if failures.is_empty() {
                 println!(
                     "Lockfile is up to date ({} packages)",
                     lockfile.packages.len()
                 );
             }
         }
+    }
+
+    if let Some(msg) = error_message {
+        return Err(Error::Config(msg));
     }
 
     Ok(())

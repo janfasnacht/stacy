@@ -3,7 +3,7 @@
 //! Recursively analyzes Stata scripts to build a complete dependency tree,
 //! detecting circular dependencies and missing files.
 
-use super::parser::{parse_dependencies, DependencyType};
+use super::parser::{is_dynamic_path, parse_dependencies, DependencyType};
 use crate::error::Result;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -21,6 +21,9 @@ pub struct DependencyTree {
     pub is_circular: bool,
     /// Whether the file exists
     pub exists: bool,
+    /// Whether the path holds a Stata macro, so it can only be resolved at run
+    /// time. Such a node is unresolved, not missing.
+    pub is_dynamic: bool,
     /// Line number in parent (None for root)
     pub line_number: Option<usize>,
 }
@@ -34,6 +37,7 @@ impl DependencyTree {
             children: Vec::new(),
             is_circular: false,
             exists: true,
+            is_dynamic: false,
             line_number: None,
         }
     }
@@ -61,7 +65,12 @@ impl DependencyTree {
 
     /// Check if tree has any missing files
     pub fn has_missing(&self) -> bool {
-        !self.exists || self.children.iter().any(|c| c.has_missing())
+        (!self.exists && !self.is_dynamic) || self.children.iter().any(|c| c.has_missing())
+    }
+
+    /// Check if tree has any paths that only resolve at run time
+    pub fn has_dynamic(&self) -> bool {
+        self.is_dynamic || self.children.iter().any(|c| c.has_dynamic())
     }
 
     /// Get all circular dependency paths
@@ -88,11 +97,27 @@ impl DependencyTree {
     }
 
     fn collect_missing<'a>(&'a self, paths: &mut Vec<&'a Path>) {
-        if !self.exists && !self.is_circular {
+        if !self.exists && !self.is_circular && !self.is_dynamic {
             paths.push(&self.path);
         }
         for child in &self.children {
             child.collect_missing(paths);
+        }
+    }
+
+    /// Get all paths that hold a Stata macro
+    pub fn dynamic_paths(&self) -> Vec<&Path> {
+        let mut paths = Vec::new();
+        self.collect_dynamic(&mut paths);
+        paths
+    }
+
+    fn collect_dynamic<'a>(&'a self, paths: &mut Vec<&'a Path>) {
+        if self.is_dynamic {
+            paths.push(&self.path);
+        }
+        for child in &self.children {
+            child.collect_dynamic(paths);
         }
     }
 
@@ -116,6 +141,8 @@ impl DependencyTree {
         let path_display = self.path.display().to_string();
         let suffix = if self.is_circular {
             " (circular)"
+        } else if self.is_dynamic {
+            " (macro path, resolved at run time)"
         } else if !self.exists {
             " (not found)"
         } else {
@@ -158,6 +185,7 @@ impl DependencyTree {
                 depth,
                 is_circular: child.is_circular,
                 exists: child.exists,
+                is_dynamic: child.is_dynamic,
             });
             if !child.is_circular {
                 child.flatten_recursive(deps, depth + 1);
@@ -174,6 +202,7 @@ pub struct FlatDependency {
     pub depth: usize,
     pub is_circular: bool,
     pub exists: bool,
+    pub is_dynamic: bool,
 }
 
 /// Build a complete dependency tree for a script
@@ -221,6 +250,7 @@ fn build_tree_recursive(
             children: Vec::new(),
             is_circular: true,
             exists: script.exists(),
+            is_dynamic: false,
             line_number,
         });
     }
@@ -233,6 +263,7 @@ fn build_tree_recursive(
             children: Vec::new(),
             is_circular: false,
             exists: false,
+            is_dynamic: false,
             line_number,
         });
     }
@@ -257,10 +288,27 @@ fn build_tree_recursive(
                 children: Vec::new(),
                 is_circular: false,
                 exists: true, // Package existence is not a file check
+                is_dynamic: false,
                 line_number: Some(dep.line_number),
             });
             continue;
         }
+
+        // A path built from a macro only exists once Stata expands it. Record
+        // it as written and stop: there is nothing to look up or recurse into.
+        if is_dynamic_path(&dep.path) {
+            children.push(DependencyTree {
+                path: dep.path.clone(),
+                dep_type: Some(dep.dep_type),
+                children: Vec::new(),
+                is_circular: false,
+                exists: false,
+                is_dynamic: true,
+                line_number: Some(dep.line_number),
+            });
+            continue;
+        }
+
         let resolved_path = dep.resolve(base_dir);
         let child = build_tree_recursive(
             &resolved_path,
@@ -280,6 +328,7 @@ fn build_tree_recursive(
         children,
         is_circular: false,
         exists: true,
+        is_dynamic: false,
         line_number,
     })
 }
@@ -293,6 +342,8 @@ pub struct DependencyAnalysis {
     pub has_missing: bool,
     pub circular_paths: Vec<PathBuf>,
     pub missing_paths: Vec<PathBuf>,
+    /// Paths that hold a Stata macro and only resolve when the script runs
+    pub dynamic_paths: Vec<PathBuf>,
 }
 
 pub fn analyze_dependencies(script: &Path) -> Result<DependencyAnalysis> {
@@ -308,6 +359,11 @@ pub fn analyze_dependencies(script: &Path) -> Result<DependencyAnalysis> {
         .iter()
         .map(|p| p.to_path_buf())
         .collect();
+    let dynamic_paths: Vec<PathBuf> = tree
+        .dynamic_paths()
+        .iter()
+        .map(|p| p.to_path_buf())
+        .collect();
 
     Ok(DependencyAnalysis {
         unique_count: tree.unique_count(),
@@ -315,6 +371,7 @@ pub fn analyze_dependencies(script: &Path) -> Result<DependencyAnalysis> {
         has_missing: tree.has_missing(),
         circular_paths,
         missing_paths,
+        dynamic_paths,
         tree,
     })
 }
@@ -388,6 +445,34 @@ mod tests {
         let tree = build_tree(&main).unwrap();
         assert!(tree.has_missing());
         assert_eq!(tree.missing_paths().len(), 1);
+    }
+
+    #[test]
+    fn test_macro_path_is_dynamic_not_missing() {
+        let temp = TempDir::new().unwrap();
+        let main = create_test_file(temp.path(), "main.do", "do \"$root/prep.do\"");
+
+        let tree = build_tree(&main).unwrap();
+        assert!(!tree.has_missing());
+        assert!(tree.missing_paths().is_empty());
+        assert!(tree.has_dynamic());
+        assert_eq!(tree.dynamic_paths(), vec![Path::new("$root/prep.do")]);
+        assert!(tree.children[0].children.is_empty());
+    }
+
+    #[test]
+    fn test_macro_path_alongside_missing_file() {
+        let temp = TempDir::new().unwrap();
+        let main = create_test_file(
+            temp.path(),
+            "main.do",
+            "do \"`sub'/prep.do\"\ndo \"gone.do\"\n",
+        );
+
+        let tree = build_tree(&main).unwrap();
+        assert!(tree.has_missing());
+        assert_eq!(tree.missing_paths().len(), 1);
+        assert_eq!(tree.dynamic_paths().len(), 1);
     }
 
     #[test]

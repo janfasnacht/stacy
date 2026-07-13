@@ -179,12 +179,14 @@ stacy env --format json
 
 ```json
 {
+  "status": "success",
   "script": "master.do",
   "dependencies": {
     "path": "master.do",
     "type": null,
     "exists": true,
     "is_circular": false,
+    "is_unresolved": false,
     "line_number": null,
     "children": [
       {
@@ -192,6 +194,7 @@ stacy env --format json
         "type": "do",
         "exists": true,
         "is_circular": false,
+        "is_unresolved": false,
         "line_number": 3,
         "children": []
       },
@@ -200,6 +203,7 @@ stacy env --format json
         "type": "require",
         "exists": true,
         "is_circular": false,
+        "is_unresolved": false,
         "line_number": 5,
         "children": []
       }
@@ -211,11 +215,21 @@ stacy env --format json
     "has_missing": false,
     "circular_paths": [],
     "missing_paths": [],
+    "unresolved_paths": [],
     "circular_count": 0,
-    "missing_count": 0
+    "missing_count": 0,
+    "unresolved_count": 0
   }
 }
 ```
+
+`status` is `success` when the graph resolved and `error` when a dependency is
+missing or circular — branch on it rather than on the summary counts.
+
+`is_unresolved` marks a path that holds a Stata macro, such as
+`do "$root/prep.do"`. stacy reads scripts but does not run them, so it cannot
+say where the path points. Such a path is listed but not looked up, and it does
+not fail the command.
 
 ## jq Examples
 

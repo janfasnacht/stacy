@@ -51,6 +51,7 @@
 
 {synoptset 25 tabbed}{...}
 {p2col 5 25 29 2: Scalars}{p_end}
+{synopt:{cmd:r(failed)}}Number of packages that could not be resolved{p_end}
 {synopt:{cmd:r(in_sync)}}Whether lockfile is in sync (1=yes, 0=no){p_end}
 {synopt:{cmd:r(package_count)}}Number of packages in lockfile{p_end}
 {synopt:{cmd:r(updated)}}Whether lockfile was updated (1=yes, 0=no){p_end}

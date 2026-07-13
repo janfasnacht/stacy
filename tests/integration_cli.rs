@@ -12,6 +12,23 @@ fn stacy() -> Command {
     cargo_bin_cmd!("stacy")
 }
 
+/// Put a package in an isolated global cache so `install` sees it as already
+/// installed and never reaches for a package source.
+fn cache_package(cache_root: &std::path::Path, name: &str, version: &str) {
+    let packages = if cfg!(windows) {
+        cache_root.join("stacy").join("cache").join("packages")
+    } else {
+        cache_root.join("stacy").join("packages")
+    };
+    let dir = packages.join(name).join(version);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join(format!("{}.ado", name)),
+        format!("program define {}\nend\n", name),
+    )
+    .unwrap();
+}
+
 #[test]
 fn test_help() {
     stacy()
@@ -175,11 +192,13 @@ fn test_deps_detects_circular() {
     fs::write(temp.path().join("a.do"), "do \"b.do\"").unwrap();
     fs::write(temp.path().join("b.do"), "do \"a.do\"").unwrap();
 
+    // The graph could not be resolved, so the analysis fails (#94)
     stacy()
         .arg("deps")
         .arg(temp.path().join("a.do"))
         .assert()
-        .success()
+        .failure()
+        .code(1)
         .stdout(predicate::str::contains("circular"));
 }
 
@@ -1468,9 +1487,16 @@ name = "devpkg"
     )
     .unwrap();
 
+    // Both packages are already in the cache, so install resolves them locally
+    let cache = TempDir::new().unwrap();
+    cache_package(cache.path(), "prodpkg", "1.0.0");
+    cache_package(cache.path(), "devpkg", "1.0.0");
+
     // Should accept the flag and mention the groups
     stacy()
         .current_dir(temp.path())
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("LOCALAPPDATA", cache.path())
         .arg("install")
         .arg("--with")
         .arg("dev")

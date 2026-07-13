@@ -49,6 +49,7 @@
 {p2col 5 25 29 2: Scalars}{p_end}
 {synopt:{cmd:r(dry_run)}}Whether this was a dry run (1=yes, 0=no){p_end}
 {synopt:{cmd:r(failed)}}Number of packages that failed to update{p_end}
+{synopt:{cmd:r(skipped)}}Number of packages with no source to check (local packages){p_end}
 {synopt:{cmd:r(total)}}Total packages checked{p_end}
 {synopt:{cmd:r(updated)}}Number of packages updated{p_end}
 {synopt:{cmd:r(updates_available)}}Number of packages with updates available{p_end}
