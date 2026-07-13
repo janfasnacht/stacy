@@ -46,6 +46,7 @@ fn test_add_local_accepts_matching_name() {
     stacy()
         .current_dir(temp.path())
         .env("XDG_CACHE_HOME", cache_home.path())
+        .env("LOCALAPPDATA", cache_home.path())
         .args(["add", "myutils", "--source", "local:./lib/myutils"])
         .assert()
         .success();
