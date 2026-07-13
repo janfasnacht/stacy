@@ -11,5 +11,5 @@ show_progress = true
 # progress_interval_seconds = 10
 # max_log_size_mb = 50
 
-[packages]
-ado_dir = "ado"
+# [packages.dependencies]
+# estout = "ssc"

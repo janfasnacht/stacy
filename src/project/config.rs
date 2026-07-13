@@ -447,12 +447,12 @@ fn unknown_key_hint(message: &str) -> Option<String> {
 /// Validate configuration values.
 ///
 /// Checks that specified paths exist and are valid.
-/// Note: log_dir and ado_dir are not validated for existence - they will be created at runtime.
+/// Note: log_dir is not validated for existence - it will be created at runtime.
 fn validate_config(_config: &Config, _project_root: &Path) -> Result<()> {
-    // Note: We don't validate log_dir and ado_dir paths here because:
-    // 1. They are relative paths that will be created at runtime
+    // Note: We don't validate the log_dir path here because:
+    // 1. It is a relative path that will be created at runtime
     // 2. The project might be shared and paths may not exist on all systems yet
-    // 3. stacy init and stacy run will create these directories as needed
+    // 3. stacy init and stacy run will create the directory as needed
     //
     // Stata binary is NOT in project config - it's in user config (~/.config/stacy/config.toml)
     // or set via STATA_BINARY environment variable.

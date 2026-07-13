@@ -7,9 +7,6 @@ name = "wrapper-test-project"
 log_dir = "logs"
 show_progress = false
 
-[packages]
-ado_dir = "ado"
-
 # Define a simple task for testing stacy_task
 [scripts.test-task]
 description = "A simple test task"

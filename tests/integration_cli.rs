@@ -651,7 +651,8 @@ fn test_run_inline_code_whitespace_rejected() {
 #[test]
 #[ignore]
 fn test_run_inline_code_success() {
-    // Simple successful inline code
+    // Simple successful inline code. Status goes to stderr, Stata's own output
+    // to stdout, so a redirected stdout holds the results and nothing else.
     stacy()
         .arg("run")
         .arg("-c")
@@ -659,7 +660,8 @@ fn test_run_inline_code_success() {
         .assert()
         .success()
         .stderr(predicate::str::contains("PASS"))
-        .stdout(predicate::str::contains("<inline code>"));
+        .stderr(predicate::str::contains("<inline code>"))
+        .stdout(predicate::str::contains("2"));
 }
 
 #[test]
@@ -2521,7 +2523,7 @@ fn test_run_parallel_with_jobs() {
         .arg(temp.path().join("second.do"))
         .assert()
         .success()
-        .stdout(predicate::str::contains("2 jobs"));
+        .stderr(predicate::str::contains("2 jobs"));
 }
 
 #[test]
@@ -2568,14 +2570,17 @@ fn test_run_parallel_runs_all_on_failure() {
 #[ignore]
 fn test_run_parallel_verbose_warning() {
     let temp = TempDir::new().unwrap();
-    fs::write(temp.path().join("test.do"), "display 1").unwrap();
+    fs::write(temp.path().join("first.do"), "display 1").unwrap();
+    fs::write(temp.path().join("second.do"), "display 2").unwrap();
 
-    // --verbose with --parallel should warn
+    // --verbose with --parallel should warn. Two scripts: one script never
+    // takes the parallel path, so the warning has nowhere to fire.
     stacy()
         .arg("run")
         .arg("--parallel")
         .arg("-v")
-        .arg(temp.path().join("test.do"))
+        .arg(temp.path().join("first.do"))
+        .arg(temp.path().join("second.do"))
         .assert()
         .success()
         .stderr(predicate::str::contains("verbose").or(predicate::str::contains("ignored")));
@@ -3088,7 +3093,7 @@ fn test_run_with_cache() {
         .arg("test.do")
         .assert()
         .success()
-        .stdout(predicate::str::contains("cache").or(predicate::str::contains("cached")));
+        .stderr(predicate::str::contains("cache").or(predicate::str::contains("cached")));
 }
 
 #[test]
