@@ -218,6 +218,8 @@ json = { type = "bool", description = "JSON output (internal)" }
 has_config = { type = "bool", json_path = "project.has_config", stata_type = "scalar", description = "stacy.toml exists (1=yes, 0=no)" }
 show_progress = { type = "bool", json_path = "settings.show_progress", stata_type = "scalar", description = "Progress shown (1=yes, 0=no)" }
 adopath_count = { type = "int", json_path = "adopath", stata_type = "scalar", array_handling = "count", description = "Number of adopath entries" }
+package_count = { type = "int", json_path = "project.package_count", stata_type = "scalar", description = "Locked packages present in the cache" }
+missing_package_count = { type = "int", json_path = "project.missing_package_count", stata_type = "scalar", description = "Locked packages absent from the cache" }
 
 # Locals
 stata_binary = { type = "path", json_path = "stata.binary", stata_type = "local", description = "Path to Stata binary" }

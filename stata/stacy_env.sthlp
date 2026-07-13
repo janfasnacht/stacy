@@ -34,6 +34,8 @@
 {p2col 5 25 29 2: Scalars}{p_end}
 {synopt:{cmd:r(adopath_count)}}Number of adopath entries{p_end}
 {synopt:{cmd:r(has_config)}}stacy.toml exists (1=yes, 0=no){p_end}
+{synopt:{cmd:r(missing_package_count)}}Locked packages absent from the cache{p_end}
+{synopt:{cmd:r(package_count)}}Locked packages present in the cache{p_end}
 {synopt:{cmd:r(show_progress)}}Progress shown (1=yes, 0=no){p_end}
 
 {p2col 5 25 29 2: Macros}{p_end}

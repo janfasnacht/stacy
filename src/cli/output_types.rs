@@ -412,6 +412,10 @@ pub struct EnvOutput {
     pub has_config: bool,
     /// Progress shown (1=yes, 0=no)
     pub show_progress: bool,
+    /// Locked packages present in the global cache
+    pub package_count: usize,
+    /// Locked packages absent from the global cache
+    pub missing_package_count: usize,
     /// Global package cache directory
     pub cache_dir: PathBuf,
     /// Project log directory
@@ -440,6 +444,14 @@ impl CommandOutput for EnvOutput {
         lines.push(format_stata_scalar_usize(
             "adopath_count",
             self.adopath_count,
+        ));
+        lines.push(format_stata_scalar_usize(
+            "package_count",
+            self.package_count,
+        ));
+        lines.push(format_stata_scalar_usize(
+            "missing_package_count",
+            self.missing_package_count,
         ));
         lines.push(format_stata_local(
             "cache_dir",
@@ -1191,6 +1203,8 @@ mod tests {
             has_config: true,
             show_progress: true,
             adopath_count: 4,
+            package_count: 2,
+            missing_package_count: 1,
             cache_dir: PathBuf::from("/home/user/.cache/stacy/packages"),
             log_dir: PathBuf::from("logs"),
             project_root: Some(PathBuf::from("/project")),
@@ -1200,6 +1214,8 @@ mod tests {
 
         let stata = output.to_stata();
         assert!(stata.contains("scalar stacy_has_config = 1"));
+        assert!(stata.contains("scalar stacy_package_count = 2"));
+        assert!(stata.contains("scalar stacy_missing_package_count = 1"));
         assert!(stata.contains("global stacy_cache_dir"));
         assert!(stata.contains("global stacy_project_root \"/project\""));
         assert!(stata.contains("global stacy_stata_binary \"/usr/local/bin/stata\""));
@@ -1211,6 +1227,8 @@ mod tests {
             has_config: false,
             show_progress: true,
             adopath_count: 4,
+            package_count: 0,
+            missing_package_count: 0,
             cache_dir: PathBuf::from("/home/user/.cache/stacy/packages"),
             log_dir: PathBuf::from("logs"),
             project_root: None,
@@ -1979,6 +1997,8 @@ mod tests {
                     has_config: true,
                     show_progress: false,
                     adopath_count: 3,
+                    package_count: 1,
+                    missing_package_count: 0,
                     cache_dir: PathBuf::from("/tmp/cache"),
                     log_dir: PathBuf::from("logs"),
                     project_root: Some(PathBuf::from("/project")),

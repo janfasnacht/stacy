@@ -13,6 +13,8 @@
     Returns:
         r(adopath_count       ) - Number of adopath entries (scalar)
         r(has_config          ) - stacy.toml exists (1=yes, 0=no) (scalar)
+        r(missing_package_count) - Locked packages absent from the cache (scalar)
+        r(package_count       ) - Locked packages present in the cache (scalar)
         r(show_progress       ) - Progress shown (1=yes, 0=no) (scalar)
         r(cache_dir           ) - Global package cache directory (local)
         r(log_dir             ) - Project log directory (local)
@@ -41,6 +43,16 @@ program define stacy_env, rclass
     capture confirm scalar stacy_has_config
     if _rc == 0 {
         return scalar has_config = scalar(stacy_has_config)
+    }
+
+    capture confirm scalar stacy_missing_package_count
+    if _rc == 0 {
+        return scalar missing_package_count = scalar(stacy_missing_package_count)
+    }
+
+    capture confirm scalar stacy_package_count
+    if _rc == 0 {
+        return scalar package_count = scalar(stacy_package_count)
     }
 
     capture confirm scalar stacy_show_progress

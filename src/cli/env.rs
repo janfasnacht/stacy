@@ -31,6 +31,9 @@ struct AdopathEntry {
     path: String,
     source: &'static str,  // "local", "package", or "builtin"
     label: Option<String>, // package name for package entries
+    /// For package entries: the package is present in the global cache.
+    /// Always true for local and builtin entries.
+    installed: bool,
 }
 
 /// Gathered environment information
@@ -44,7 +47,10 @@ struct EnvironmentInfo {
     log_dir: PathBuf,
     show_progress: bool,
     adopath: Vec<AdopathEntry>,
+    /// Locked packages found in the global cache.
     package_count: usize,
+    /// Locked packages absent from the global cache.
+    missing_package_count: usize,
 }
 
 pub fn execute(args: &EnvArgs) -> Result<()> {
@@ -56,6 +62,8 @@ pub fn execute(args: &EnvArgs) -> Result<()> {
         has_config: info.has_config,
         show_progress: info.show_progress,
         adopath_count: info.adopath.len(),
+        package_count: info.package_count,
+        missing_package_count: info.missing_package_count,
         cache_dir: info.cache_dir.clone(),
         log_dir: info.log_dir.clone(),
         project_root: info.project_root.clone(),
@@ -92,7 +100,7 @@ fn gather_environment_info() -> Result<EnvironmentInfo> {
 
     // Build adopath list from lockfile + local ado paths
     let local_ado_paths = resolve_local_ado_paths_for_env(&project);
-    let (adopath, package_count) =
+    let (adopath, package_count, missing_package_count) =
         build_adopath_from_lockfile(&project.as_ref().map(|p| p.root.clone()), &local_ado_paths);
 
     // Check for config file
@@ -110,6 +118,7 @@ fn gather_environment_info() -> Result<EnvironmentInfo> {
         show_progress,
         adopath,
         package_count,
+        missing_package_count,
     })
 }
 
@@ -145,12 +154,19 @@ fn resolve_local_ado_paths_for_env(project: &Option<Project>) -> Vec<PathBuf> {
     }
 }
 
+/// Build the adopath list and count locked packages by cache status.
+///
+/// Returns `(entries, installed, missing)`. A lockfile entry is only counted as
+/// installed when its directory is actually present in the global cache —
+/// `package_path` merely constructs a path, so a cold cache used to report every
+/// declared package as installed (#99).
 fn build_adopath_from_lockfile(
     project_root: &Option<PathBuf>,
     local_ado_paths: &[PathBuf],
-) -> (Vec<AdopathEntry>, usize) {
+) -> (Vec<AdopathEntry>, usize, usize) {
     let mut entries = Vec::new();
     let mut package_count = 0;
+    let mut missing_package_count = 0;
 
     // Add local ado paths first (in declared order)
     for local_path in local_ado_paths {
@@ -158,6 +174,7 @@ fn build_adopath_from_lockfile(
             path: local_path.display().to_string(),
             source: "local",
             label: None,
+            installed: true,
         });
     }
 
@@ -172,12 +189,19 @@ fn build_adopath_from_lockfile(
 
                 for (name, entry) in sorted_packages {
                     if let Ok(pkg_path) = global_cache::package_path(name, &entry.version) {
+                        let installed =
+                            global_cache::is_cached(name, &entry.version).unwrap_or(false);
+                        if installed {
+                            package_count += 1;
+                        } else {
+                            missing_package_count += 1;
+                        }
                         entries.push(AdopathEntry {
                             path: pkg_path.display().to_string(),
                             source: "package",
                             label: Some(name.clone()),
+                            installed,
                         });
-                        package_count += 1;
                     }
                 }
             }
@@ -193,9 +217,10 @@ fn build_adopath_from_lockfile(
         path: "BASE".to_string(),
         source: "builtin",
         label: None,
+        installed: true,
     });
 
-    (entries, package_count)
+    (entries, package_count, missing_package_count)
 }
 
 fn print_human_output(info: &EnvironmentInfo) {
@@ -223,7 +248,14 @@ fn print_human_output(info: &EnvironmentInfo) {
         } else {
             println!("  Config: stacy.toml (not found, using defaults)");
         }
-        println!("  Packages: {} installed", info.package_count);
+        if info.missing_package_count > 0 {
+            println!(
+                "  Packages: {} installed, {} missing (run 'stacy install')",
+                info.package_count, info.missing_package_count
+            );
+        } else {
+            println!("  Packages: {} installed", info.package_count);
+        }
     } else {
         println!("  Root: (not in a project)");
         println!("  Tip: Run 'stacy init' to create a project");
@@ -241,6 +273,9 @@ fn print_human_output(info: &EnvironmentInfo) {
     for (i, entry) in info.adopath.iter().enumerate() {
         let label = match (entry.source, &entry.label) {
             ("local", _) => format!("{} (local)", entry.path),
+            ("package", Some(name)) if !entry.installed => {
+                format!("{} ({}, not installed)", entry.path, name)
+            }
             ("package", Some(name)) => format!("{} ({})", entry.path, name),
             _ => entry.path.clone(),
         };
@@ -269,6 +304,7 @@ fn print_json_output(info: &EnvironmentInfo) {
             "config_file": info.config_file.as_ref().map(|p| p.display().to_string()),
             "has_config": info.has_config,
             "package_count": info.package_count,
+            "missing_package_count": info.missing_package_count,
         },
         "paths": {
             "cache": info.cache_dir.display().to_string(),
@@ -283,6 +319,9 @@ fn print_json_output(info: &EnvironmentInfo) {
             obj.insert("source".to_string(), json!(e.source));
             if let Some(ref label) = e.label {
                 obj.insert("label".to_string(), json!(label));
+            }
+            if e.source == "package" {
+                obj.insert("installed".to_string(), json!(e.installed));
             }
             serde_json::Value::Object(obj)
         }).collect::<Vec<_>>(),
