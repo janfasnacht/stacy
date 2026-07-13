@@ -64,8 +64,14 @@ file path are displayed. Use `-v` to stream the raw log instead, or `-q` to
 suppress all output.
 
 The batch log file is internal: removed on success, kept on failure with its
-path printed in the failure output. Use `--log <path>` to keep the raw Stata
-log as a durable artifact (`--quiet --log out.log` for a silent file-only run).
+path printed in the failure output. Inside a project, kept logs go to `[run]
+log_dir` from `stacy.toml` (`logs/` by default); outside one they stay next to
+the run. The same rule applies to the scripts run by `stacy task`, `stacy test`
+and `stacy bench`, and to every output format — `--format json` and `--format
+stata` report an empty log_file for a run that succeeded, because there is no
+log to point at. Use `--log <path>` to keep the raw Stata log as a durable
+artifact — it wins over `log_dir` and is written whether the run passed or
+failed (`--quiet --log out.log` for a silent file-only run).
 
 Multiple scripts can be run sequentially (default, fail-fast) or in parallel
 (`--parallel`). Parallel mode runs all scripts regardless of failures.
@@ -104,7 +110,7 @@ error_count = { type = "int", json_path = "errors", stata_type = "scalar", array
 # Locals (string values)
 source = { type = "string", json_path = "source", stata_type = "local", description = "'file' or 'inline'" }
 script = { type = "path", json_path = "script", stata_type = "local", description = "Path to script" }
-log_file = { type = "path", json_path = "log_file", stata_type = "local", description = "Path to log file" }
+log_file = { type = "path", json_path = "log_file", stata_type = "local", description = "Path to the kept log file (empty when the run succeeded)" }
 
 [commands.run.exit_codes]
 0 = "Success"
@@ -218,6 +224,8 @@ json = { type = "bool", description = "JSON output (internal)" }
 has_config = { type = "bool", json_path = "project.has_config", stata_type = "scalar", description = "stacy.toml exists (1=yes, 0=no)" }
 show_progress = { type = "bool", json_path = "settings.show_progress", stata_type = "scalar", description = "Progress shown (1=yes, 0=no)" }
 adopath_count = { type = "int", json_path = "adopath", stata_type = "scalar", array_handling = "count", description = "Number of adopath entries" }
+package_count = { type = "int", json_path = "project.package_count", stata_type = "scalar", description = "Locked packages present in the cache" }
+missing_package_count = { type = "int", json_path = "project.missing_package_count", stata_type = "scalar", description = "Locked packages absent from the cache" }
 
 # Locals
 stata_binary = { type = "path", json_path = "stata.binary", stata_type = "local", description = "Path to Stata binary" }

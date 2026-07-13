@@ -1636,9 +1636,9 @@ fn test_task_frozen_flag_exists() {
 }
 
 #[test]
-fn test_task_table_without_work_fails() {
-    // A table-form task whose work key is typo'd (serde drops unknown keys)
-    // must error, not succeed as a no-op (#92)
+fn test_task_table_with_typoed_work_key_fails() {
+    // A table-form task whose work key is typo'd must error rather than succeed
+    // as a no-op (#92). The unknown key is now named outright (#100).
     let temp = TempDir::new().unwrap();
     fs::write(
         temp.path().join("stacy.toml"),
@@ -1648,6 +1648,30 @@ name = "test"
 [scripts.build]
 description = "Build everything"
 scripts = ["src/01_clean.do"]
+"#,
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("task")
+        .arg("build")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("unknown field `scripts`"));
+}
+
+#[test]
+fn test_task_table_without_work_fails() {
+    // Every key is known, but none of them defines any work (#92).
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("stacy.toml"),
+        r#"[project]
+name = "test"
+
+[scripts.build]
+description = "Build everything"
 "#,
     )
     .unwrap();
@@ -2573,15 +2597,17 @@ fn test_run_parallel_same_stem_no_log_collision() {
 
 // Issue #20: each invocation must produce a distinct log file path so
 // concurrent stacy processes from a shared cwd never write to the same file.
+//
+// The script errors on purpose: only a failed run keeps its log (#98), so a
+// failure is what lets the test see the path stacy generated.
 #[test]
 #[ignore]
 fn test_run_log_path_unique_per_invocation() {
     let temp = TempDir::new().unwrap();
-    fs::write(temp.path().join("test.do"), "display 42\n").unwrap();
-    let script = temp.path().join("test.do");
+    fs::write(temp.path().join("test.do"), "error 198\n").unwrap();
 
-    let log1 = run_and_extract_log(&script);
-    let log2 = run_and_extract_log(&script);
+    let log1 = run_and_extract_log(temp.path(), "test.do");
+    let log2 = run_and_extract_log(temp.path(), "test.do");
 
     assert_ne!(
         log1, log2,
@@ -2681,13 +2707,15 @@ fn test_version_check_rejects_stale_binary() {
     );
 }
 
-fn run_and_extract_log(script: &std::path::Path) -> String {
+/// Run a failing script in `dir` and return the log path stacy reports.
+fn run_and_extract_log(dir: &std::path::Path, script: &str) -> String {
     let out = stacy()
+        .current_dir(dir)
         .arg("run")
         .arg("--format=json")
         .arg(script)
         .assert()
-        .success()
+        .failure()
         .get_output()
         .stdout
         .clone();

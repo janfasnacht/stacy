@@ -61,10 +61,16 @@ Settings for [`stacy run`](../commands/run.md) command.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `log_dir` | string | `"logs"` | Directory for log files |
+| `log_dir` | string | `"logs"` | Directory for kept log files, relative to the project root |
 | `show_progress` | bool | `true` | Show progress during execution |
 | `progress_interval_seconds` | int | `10` | Progress update interval |
 | `max_log_size_mb` | int | `50` | Log size warning threshold |
+
+Batch logs are internal: a script that succeeds leaves none behind. A script that
+fails keeps its log, and `log_dir` is where it goes — for `stacy run` as well as
+the scripts run by `stacy task`, `stacy test` and `stacy bench`. The directory is
+created when the first log needs it. `stacy run --log <path>` overrides `log_dir`
+for that run.
 
 ### [paths]
 
@@ -127,6 +133,28 @@ analyze = { script = "src/02_analyze.do", description = "Main estimates" }
 ```
 
 ## Important Notes
+
+### Unknown Keys Are Rejected
+
+Task names under `[scripts]` are yours to pick. Every other key must be one stacy
+knows — including the keys inside a package table (`source`, `version`) and a task
+table (`script`, `args`, `parallel`, `description`). A key it does not know is an
+error, not a shrug:
+
+```
+$ stacy lock
+Error: Failed to parse stacy.toml: TOML parse error at line 4, column 1
+  |
+4 | [dependencies]
+  | ^^^^^^^^^^^^^^
+unknown field `dependencies`, expected one of `project`, `run`, `paths`, `packages`, `scripts`
+hint: declare these under [packages.dependencies]
+```
+
+Dependencies declared under the wrong key used to be dropped without a word, and
+`stacy lock` then reported success on zero packages. The same went for a typo
+inside a package table: `{ source = "ssc", verison = "1.0.0" }` parsed, lost the
+version pin, and resolved the latest release instead.
 
 ### Stata Binary
 

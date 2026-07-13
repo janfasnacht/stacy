@@ -494,14 +494,15 @@ fn test_cache_clean_format_stata_syntax() {
 #[test]
 fn test_task_list_format_stata_syntax() {
     let temp = TempDir::new().unwrap();
-    // Create a stacy.toml with tasks
+    // Tasks live in [scripts]; the old fixture's [tasks.build] was silently
+    // dropped, so this listed nothing at all (#100).
     fs::write(
         temp.path().join("stacy.toml"),
         r#"[project]
 name = "test"
 
-[tasks.build]
-scripts = ["main.do"]
+[scripts]
+build = "main.do"
 "#,
     )
     .unwrap();

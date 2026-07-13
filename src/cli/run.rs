@@ -6,6 +6,7 @@ use crate::cli::output_types::{
     CacheHitOutput, CommandOutput, ParallelRunOutput, RunOutput, ScriptRunResult,
 };
 use crate::error::{Error, Result};
+use crate::executor::log_policy::LogPolicy;
 use crate::utils::temp::TempScript;
 use clap::Args;
 use std::io::{IsTerminal, Read};
@@ -248,7 +249,8 @@ pub struct RunArgs {
     pub timeout: Option<u64>,
 
     /// Write the raw Stata log to this path (in addition to normal output).
-    /// Without this flag the log is internal: removed on success, kept on failure.
+    /// Without this flag the log is internal: removed on success, kept on
+    /// failure in the project's log_dir ([run] log_dir in stacy.toml).
     #[arg(long, value_name = "PATH", conflicts_with = "parallel")]
     pub log: Option<PathBuf>,
 }
@@ -369,37 +371,13 @@ fn resolve_working_dir(script: &Path, args: &RunArgs) -> Result<(PathBuf, Option
     }
 }
 
-/// Apply the log-retention policy after a run.
+/// Build the log-retention policy for a run.
 ///
-/// `--log <path>` moves the raw log there (the durable artifact) and returns
-/// that path. Otherwise the log is an internal file: removed when `delete`
-/// is set (success in human mode, where output was already streamed), kept
-/// for inspection when not (failures, and machine-readable formats whose
-/// output references it).
-fn finalize_log(log_file: &Path, delete: bool, dest: Option<&Path>) -> PathBuf {
-    match dest {
-        Some(dest) => {
-            // Rename, falling back to copy+remove across filesystems
-            let moved = std::fs::rename(log_file, dest).or_else(|_| {
-                std::fs::copy(log_file, dest).map(|_| {
-                    let _ = std::fs::remove_file(log_file);
-                })
-            });
-            match moved {
-                Ok(()) => dest.to_path_buf(),
-                Err(e) => {
-                    eprintln!("Warning: could not write log to {}: {}", dest.display(), e);
-                    log_file.to_path_buf()
-                }
-            }
-        }
-        None => {
-            if delete {
-                let _ = std::fs::remove_file(log_file);
-            }
-            log_file.to_path_buf()
-        }
-    }
+/// `--log <path>` makes the log a durable artifact at that path. Otherwise it is
+/// internal: removed on success, kept on failure, whatever the output format.
+/// Kept logs go to `[run] log_dir`.
+fn log_policy(project: &Option<crate::project::Project>, dest: Option<PathBuf>) -> LogPolicy {
+    LogPolicy::for_project(project.as_ref()).with_dest(dest)
 }
 
 /// Warn if semicolons detected in inline code (Stata uses newlines)
@@ -458,7 +436,7 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
 
     // Create temp file for inline code
     let cwd = std::env::current_dir()?;
-    let mut temp_script = TempScript::new(&code, &cwd)?;
+    let temp_script = TempScript::new(&code, &cwd)?;
     let script_path = temp_script.path().to_path_buf();
 
     // Create executor
@@ -487,12 +465,12 @@ fn execute_inline(args: &RunArgs) -> Result<()> {
 
     // Run Stata
     let mut result = executor.run(&script_path, project_root)?;
-    // The wrapper-derived log path doesn't match TempScript's expected
-    // `script.with_extension("log")`. Hand the real path to TempScript so
-    // its Drop cleans up the inline-run log (preserves pre-#20 behavior).
-    temp_script.set_actual_log(result.log_file.clone());
-    // --log moves it out first; TempScript's best-effort Drop then no-ops.
-    result.log_file = finalize_log(&result.log_file, false, args.log.as_deref());
+    // The log is owned by the retention policy, not by TempScript: an inline run
+    // that failed keeps its log (in log_dir when configured) so the path printed
+    // below actually resolves. A successful run has no log, and reports none.
+    result.log_file = log_policy(&project, args.log.clone())
+        .finalize(&result.log_file, result.success)
+        .unwrap_or_default();
 
     if let Some(ref mut m) = metrics {
         m.end_phase("execution");
@@ -762,11 +740,6 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
     } else {
         executor.run(effective_script, project_root)?
     };
-    // Tell the trace TempScript where the real log lives so Drop cleans it up
-    // (the wrapper stem doesn't match TempScript's `script.with_extension("log")`).
-    if let Some(ref mut ts) = _trace_temp_script {
-        ts.set_actual_log(result.log_file.clone());
-    }
 
     if let Some(ref mut m) = metrics {
         m.end_phase("execution");
@@ -788,13 +761,10 @@ fn execute_single(script_path: &Path, args: &RunArgs) -> Result<()> {
     }
 
     // Log retention: --log moves it aside; otherwise internal — removed on
-    // success in human mode (output was already streamed), kept on failure
-    // and for machine formats whose output references it.
-    result.log_file = finalize_log(
-        &result.log_file,
-        result.success && !format.is_machine_readable(),
-        args.log.as_deref(),
-    );
+    // success, kept on failure so the path printed below resolves.
+    result.log_file = log_policy(&project, args.log.clone())
+        .finalize(&result.log_file, result.success)
+        .unwrap_or_default();
 
     // Build output
     let output = RunOutput {
@@ -967,6 +937,7 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
         .with_local_ado_paths(local_ado_paths)
         .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
+    let policy = log_policy(&project, None);
 
     let start = Instant::now();
     let mut results: Vec<ScriptRunResult> = Vec::new();
@@ -1006,19 +977,11 @@ fn execute_sequential(args: &RunArgs) -> Result<()> {
         } else {
             executor.run(script, project_root)?
         };
-        // Hand the wrapper-derived log path to the trace TempScript so Drop
-        // cleans it up (see #20 — the stem no longer matches script.with_extension).
-        if let Some(ref mut ts) = _trace_temp_script {
-            ts.set_actual_log(result.log_file.clone());
-        }
 
-        // Log retention: internal file — removed on success in human mode
-        // (output was already streamed), kept on failure / machine formats.
-        let final_log = finalize_log(
-            &result.log_file,
-            result.success && !format.is_machine_readable(),
-            None,
-        );
+        // Log retention: internal file — removed on success, kept on failure.
+        let final_log = policy
+            .finalize(&result.log_file, result.success)
+            .unwrap_or_default();
 
         let script_result = ScriptRunResult {
             script: script.clone(),
@@ -1134,6 +1097,7 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
         .with_local_ado_paths(local_ado_paths)
         .with_timeout(args.timeout.map(Duration::from_secs));
     let project_root = project.as_ref().map(|p| p.root.as_path());
+    let policy = log_policy(&project, None);
 
     if !args.quiet && format == OutputFormat::Human {
         eprintln!(
@@ -1216,13 +1180,11 @@ fn execute_parallel(args: &RunArgs) -> Result<()> {
                 }
             }
 
-            // Log retention: removed on success in human mode (output shown
-            // above), kept on failure / machine formats.
-            result.log_file = finalize_log(
-                &result.log_file,
-                result.success && !format.is_machine_readable(),
-                None,
-            );
+            // Log retention: removed on success (the output was shown above),
+            // kept on failure.
+            result.log_file = policy
+                .finalize(&result.log_file, result.success)
+                .unwrap_or_default();
 
             script_results.push(result);
         }

@@ -5,6 +5,7 @@
 use crate::cli::output_format::OutputFormat;
 use crate::cli::output_types::{BenchOutput, CommandOutput};
 use crate::error::Result;
+use crate::executor::log_policy::LogPolicy;
 use crate::executor::{verbosity::Verbosity, StataExecutor};
 use crate::project::Project;
 use clap::Args;
@@ -140,6 +141,10 @@ pub fn execute(args: &BenchArgs) -> Result<()> {
     let executor =
         StataExecutor::try_new(engine_ref, Verbosity::Quiet)?.with_local_ado_paths(local_ado_paths);
 
+    // Benchmarks run the script many times; their logs are internal. Removed on
+    // success, kept on failure so the run can be diagnosed (#98).
+    let policy = LogPolicy::for_project(project.as_ref());
+
     // Print header
     if !args.quiet && format == OutputFormat::Human {
         println!("Benchmarking: {}", args.script.display());
@@ -169,10 +174,14 @@ pub fn execute(args: &BenchArgs) -> Result<()> {
 
         for i in 0..warmup_count {
             let result = executor.run(&args.script, project_root)?;
+            let log_file = policy.finalize(&result.log_file, result.success);
 
             if !result.success {
                 if format == OutputFormat::Human {
                     eprintln!("\nError: Script failed during warmup run {}", i + 1);
+                    if let Some(log) = &log_file {
+                        eprintln!("Log: {}", log.display());
+                    }
                 }
                 process::exit(result.exit_code);
             }
@@ -198,10 +207,14 @@ pub fn execute(args: &BenchArgs) -> Result<()> {
 
     for i in 0..args.runs {
         let result = executor.run(&args.script, project_root)?;
+        let log_file = policy.finalize(&result.log_file, result.success);
 
         if !result.success {
             if format == OutputFormat::Human {
                 eprintln!("\nError: Script failed on run {}", i + 1);
+                if let Some(log) = &log_file {
+                    eprintln!("Log: {}", log.display());
+                }
             }
             process::exit(result.exit_code);
         }

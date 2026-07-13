@@ -32,7 +32,7 @@
         r(error_count         ) - Number of errors detected (scalar)
         r(exit_code           ) - Exit code (0=success) (scalar)
         r(success             ) - Whether script succeeded (1=yes, 0=no) (scalar)
-        r(log_file            ) - Path to log file (local)
+        r(log_file            ) - Path to the kept log file (empty when the run succeeded) (local)
         r(script              ) - Path to script (local)
         r(source              ) - 'file' or 'inline' (local)
 */
