@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A task that defines no work — a table without `script` or `parallel` (e.g. a typo'd key, which TOML parsing silently drops) or an empty array — now fails with a config error instead of succeeding as a no-op (#92).
+
 ## [1.4.0] - 2026-07-13
 
 ### Added

@@ -1636,6 +1636,32 @@ fn test_task_frozen_flag_exists() {
 }
 
 #[test]
+fn test_task_table_without_work_fails() {
+    // A table-form task whose work key is typo'd (serde drops unknown keys)
+    // must error, not succeed as a no-op (#92)
+    let temp = TempDir::new().unwrap();
+    fs::write(
+        temp.path().join("stacy.toml"),
+        r#"[project]
+name = "test"
+
+[scripts.build]
+description = "Build everything"
+scripts = ["src/01_clean.do"]
+"#,
+    )
+    .unwrap();
+
+    stacy()
+        .current_dir(temp.path())
+        .arg("task")
+        .arg("build")
+        .assert()
+        .failure()
+        .stderr(predicate::str::contains("defines no work"));
+}
+
+#[test]
 fn test_task_frozen_in_sync() {
     let temp = TempDir::new().unwrap();
     fs::write(
