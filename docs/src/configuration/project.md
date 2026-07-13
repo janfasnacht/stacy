@@ -61,10 +61,16 @@ Settings for [`stacy run`](../commands/run.md) command.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `log_dir` | string | `"logs"` | Directory for log files |
+| `log_dir` | string | `"logs"` | Directory for kept log files, relative to the project root |
 | `show_progress` | bool | `true` | Show progress during execution |
 | `progress_interval_seconds` | int | `10` | Progress update interval |
 | `max_log_size_mb` | int | `50` | Log size warning threshold |
+
+Batch logs are internal: a script that succeeds leaves none behind. A script that
+fails keeps its log, and `log_dir` is where it goes — for `stacy run` as well as
+the scripts run by `stacy task`, `stacy test` and `stacy bench`. The directory is
+created when the first log needs it. `stacy run --log <path>` overrides `log_dir`
+for that run.
 
 ### [paths]
 

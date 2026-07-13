@@ -3,6 +3,7 @@
 //! Handles sequential and parallel execution of tasks defined in the task graph.
 
 use crate::error::{Error, Result};
+use crate::executor::log_policy::LogPolicy;
 use crate::executor::StataExecutor;
 use crate::project::config::TaskDef;
 use crate::task::TaskGraph;
@@ -93,6 +94,8 @@ pub struct TaskExecutor<'a> {
     project_root: &'a Path,
     /// Arguments to pass to scripts (name -> value)
     args: HashMap<String, String>,
+    /// What happens to each script's log once it has run
+    log_policy: LogPolicy,
 }
 
 impl<'a> TaskExecutor<'a> {
@@ -103,12 +106,19 @@ impl<'a> TaskExecutor<'a> {
             stata,
             project_root,
             args: HashMap::new(),
+            log_policy: LogPolicy::new(),
         }
     }
 
     /// Set arguments to pass to scripts
     pub fn with_args(mut self, args: HashMap<String, String>) -> Self {
         self.args = args;
+        self
+    }
+
+    /// Set the log-retention policy applied after each script (#98).
+    pub fn with_log_policy(mut self, policy: LogPolicy) -> Self {
+        self.log_policy = policy;
         self
     }
 
@@ -180,13 +190,17 @@ impl<'a> TaskExecutor<'a> {
 
         let duration = start.elapsed();
 
+        // Same contract as `stacy run`: the log is internal unless the run
+        // failed. Without this every task left its log in the working directory.
+        let log_file = self.log_policy.finalize(&result.log_file, result.success);
+
         let script_result = ScriptResult {
             name: name.to_string(),
             script: script_path,
             success: result.success,
             exit_code: result.exit_code,
             duration,
-            log_file: result.log_file,
+            log_file,
         };
 
         let mut task_result = TaskResult::empty(name);

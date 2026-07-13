@@ -7,6 +7,7 @@ use crate::cli::output_types::{
     CommandOutput, ScriptResultOutput, TaskInfo, TaskListOutput, TaskOutput,
 };
 use crate::error::{Error, Result};
+use crate::executor::log_policy::LogPolicy;
 use crate::executor::StataExecutor;
 use crate::packages::lockfile::{load_lockfile, verify_lockfile_sync};
 use crate::project::config::TaskDef;
@@ -173,8 +174,13 @@ pub fn execute(args: &TaskArgs) -> Result<()> {
     let executor = StataExecutor::try_new(None, resolve_verbosity(false, 0, format))?
         .with_local_ado_paths(project.resolve_local_ado_paths());
 
-    // Create task executor
-    let task_executor = TaskExecutor::new(&graph, &executor, &project.root).with_args(task_args);
+    // Create task executor. Each script's log follows the same retention rule as
+    // `stacy run`: removed on success, kept (in `[run] log_dir`) on failure (#98).
+    let policy =
+        LogPolicy::for_project(Some(&project)).keep_on_success(format.is_machine_readable());
+    let task_executor = TaskExecutor::new(&graph, &executor, &project.root)
+        .with_args(task_args)
+        .with_log_policy(policy);
 
     // Run the task
     let result = task_executor.execute(task_name)?;

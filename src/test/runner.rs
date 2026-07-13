@@ -3,6 +3,7 @@
 //! Executes discovered tests sequentially or in parallel using StataExecutor.
 
 use crate::error::{Result, StataError};
+use crate::executor::log_policy::LogPolicy;
 use crate::executor::StataExecutor;
 use crate::test::discovery::TestFile;
 
@@ -136,6 +137,8 @@ pub struct TestRunner<'a> {
     parallel: bool,
     /// Working directory mode for test execution
     working_dir: TestWorkingDir,
+    /// What happens to each test's log once it has run
+    log_policy: LogPolicy,
 }
 
 impl<'a> TestRunner<'a> {
@@ -146,12 +149,19 @@ impl<'a> TestRunner<'a> {
             project_root,
             parallel: false,
             working_dir: TestWorkingDir::default(),
+            log_policy: LogPolicy::new(),
         }
     }
 
     /// Enable parallel test execution
     pub fn with_parallel(mut self, parallel: bool) -> Self {
         self.parallel = parallel;
+        self
+    }
+
+    /// Set the log-retention policy applied after each test (#98).
+    pub fn with_log_policy(mut self, policy: LogPolicy) -> Self {
+        self.log_policy = policy;
         self
     }
 
@@ -181,6 +191,10 @@ impl<'a> TestRunner<'a> {
             None
         };
 
+        // A passing test's log is internal and is removed; a failing test keeps
+        // its log (in `[run] log_dir` when set) — the failure report reads it.
+        let log_file = self.log_policy.finalize(&result.log_file, result.success);
+
         Ok(TestResult {
             name: test.name.clone(),
             path: test.path.clone(),
@@ -188,7 +202,7 @@ impl<'a> TestRunner<'a> {
             exit_code: result.exit_code,
             duration,
             error_message,
-            log_file: Some(result.log_file),
+            log_file: Some(log_file),
         })
     }
 

@@ -1,4 +1,5 @@
 pub mod binary;
+pub mod log_policy;
 pub mod log_reader;
 pub mod progress;
 pub mod run_paths;

@@ -8,6 +8,7 @@ use crate::cli::output_types::{
 };
 use crate::cli::test_output;
 use crate::error::{Error, Result};
+use crate::executor::log_policy::LogPolicy;
 use crate::executor::StataExecutor;
 use crate::project::Project;
 use crate::test::discovery::{discover_tests, find_test};
@@ -111,10 +112,21 @@ pub fn execute(args: &TestArgs) -> Result<()> {
         .map(|p| p.root.clone())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
+    // Log retention (#98): a passing test's log is internal, a failing test's
+    // log is kept — in `[run] log_dir` when the project sets one.
+    let policy = LogPolicy::for_project(project.as_ref());
+
     // Handle specific test
     if let Some(ref test_name) = args.test {
         if let Some(test) = find_test(&project_root, test_name)? {
-            return run_single_test(args, &project_root, &test, &local_ado_paths, working_dir);
+            return run_single_test(
+                args,
+                &project_root,
+                &test,
+                &local_ado_paths,
+                working_dir,
+                policy,
+            );
         } else {
             let msg = format!("Test '{}' not found", test_name);
             if format.is_machine_readable() {
@@ -175,7 +187,14 @@ pub fn execute(args: &TestArgs) -> Result<()> {
     }
 
     // Run tests
-    run_tests(args, &project_root, &tests, &local_ado_paths, working_dir)
+    run_tests(
+        args,
+        &project_root,
+        &tests,
+        &local_ado_paths,
+        working_dir,
+        policy,
+    )
 }
 
 fn run_single_test(
@@ -184,6 +203,7 @@ fn run_single_test(
     test: &crate::test::discovery::TestFile,
     local_ado_paths: &[std::path::PathBuf],
     working_dir: TestWorkingDir,
+    log_policy: LogPolicy,
 ) -> Result<()> {
     let format = args.format;
 
@@ -193,7 +213,9 @@ fn run_single_test(
         .with_local_ado_paths(local_ado_paths.to_vec());
 
     // Create test runner
-    let runner = TestRunner::new(&executor, project_root).with_working_dir(working_dir);
+    let runner = TestRunner::new(&executor, project_root)
+        .with_working_dir(working_dir)
+        .with_log_policy(log_policy);
 
     // Run the test
     if !args.quiet && format == OutputFormat::Human {
@@ -240,6 +262,7 @@ fn run_tests(
     tests: &[crate::test::discovery::TestFile],
     local_ado_paths: &[std::path::PathBuf],
     working_dir: TestWorkingDir,
+    log_policy: LogPolicy,
 ) -> Result<()> {
     let format = args.format;
 
@@ -251,7 +274,8 @@ fn run_tests(
     // Create test runner
     let runner = TestRunner::new(&executor, project_root)
         .with_parallel(args.parallel)
-        .with_working_dir(working_dir);
+        .with_working_dir(working_dir)
+        .with_log_policy(log_policy);
 
     // Print header
     if !args.quiet && format == OutputFormat::Human {
