@@ -1,6 +1,6 @@
 *! _stacy_exec.ado - Execute stacy command and capture Stata-native output
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.4.0
+*! Version: 1.5.0
 
 /*
     Execute a stacy CLI command and capture Stata-native output.

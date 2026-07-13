@@ -1,6 +1,6 @@
 *! _stacy_semver_cmp.ado - Semver comparison helper
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.4.0
+*! Version: 1.5.0
 *! AUTO-GENERATED - DO NOT EDIT
 *! Regenerate with: cargo xtask codegen
 

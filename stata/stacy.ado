@@ -1,5 +1,5 @@
 *! stacy.ado - Reproducible Stata Workflow Tool
-*! Version: 1.4.0
+*! Version: 1.5.0
 *! Author: Jan Fasnacht
 *! URL: https://github.com/janfasnacht/stacy
 *! AUTO-GENERATED - DO NOT EDIT
@@ -109,7 +109,7 @@ program define stacy, rclass
         stacy_setup `0'
     }
     else if "`subcmd'" == "version" | "`subcmd'" == "--version" {
-        di as text "stacy Stata wrapper v1.4.0"
+        di as text "stacy Stata wrapper v1.5.0"
     }
     else if "`subcmd'" == "help" | "`subcmd'" == "--help" {
         help stacy
