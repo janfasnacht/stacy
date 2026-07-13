@@ -4,6 +4,9 @@
 //! `findfile`) and reports any that are missing from the project's config.
 //! This catches implicit dependencies that would otherwise only surface at
 //! runtime when Stata errors out.
+//!
+//! References to files the package ships itself are internal, not dependencies,
+//! so they are excluded — see [`provided_names`].
 
 use regex::Regex;
 use std::collections::HashSet;
@@ -101,6 +104,14 @@ const BUILTINS: &[&str] = &[
     "timer",
 ];
 
+/// File extensions that let a package define a name its other files can refer
+/// to: commands (`.ado`), Mata source and libraries, classes, dialogs, schemes
+/// and help files. A reference to one of these is internal to the package.
+const PROVIDED_EXTENSIONS: &[&str] = &[
+    "ado", "class", "dlg", "do", "hlp", "idlg", "ihlp", "mata", "mlib", "mnu", "mo", "plugin",
+    "scheme", "smcl", "sthlp", "style",
+];
+
 /// Scan `.ado` file content for dependency patterns.
 /// Returns package names that appear to be required.
 fn scan_content(content: &str) -> HashSet<String> {
@@ -168,18 +179,63 @@ pub fn scan_package_deps(package_dir: &Path) -> Vec<String> {
     result
 }
 
-/// Compare scanned deps against installed packages.
-/// Returns names that are detected but missing from the project.
+/// Names the package provides itself: its own name plus the stem of every
+/// shipped file that can define a name.
+///
+/// A package's `.ado` files routinely load the package's own Mata source,
+/// classes and sub-commands by file name — `ftools` ships `fcollapse_main.mata`
+/// and `ftools_type_aliases.mata` and loads both with `findfile`. Those are
+/// internal files, not external packages, so they must never be reported as
+/// missing dependencies.
+pub fn provided_names(package_name: &str, package_dir: &Path) -> HashSet<String> {
+    let mut names = HashSet::new();
+    names.insert(package_name.to_lowercase());
+
+    let entries = match std::fs::read_dir(package_dir) {
+        Ok(e) => e,
+        Err(_) => return names,
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let provides_name = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| PROVIDED_EXTENSIONS.contains(&ext.to_lowercase().as_str()));
+        if !provides_name {
+            continue;
+        }
+
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        let name = file_name.to_lowercase();
+
+        // Both the full stem and the leading component, so a file shipped as
+        // `parallel_map_template.do.ado` is provided under either spelling.
+        if let Some(stem) = name.rsplit_once('.').map(|(stem, _)| stem) {
+            names.insert(stem.to_string());
+        }
+        if let Some((head, _)) = name.split_once('.') {
+            names.insert(head.to_string());
+        }
+    }
+
+    names
+}
+
+/// Compare scanned deps against the names the package provides itself and the
+/// packages already installed. Returns names that are detected but missing.
 pub fn find_missing_deps(
     package_name: &str,
     package_dir: &Path,
     installed: &HashSet<String>,
 ) -> Vec<String> {
     let deps = scan_package_deps(package_dir);
-    let pkg_lower = package_name.to_lowercase();
+    let provided = provided_names(package_name, package_dir);
 
     deps.into_iter()
-        .filter(|dep| dep != &pkg_lower && !installed.contains(dep))
+        .filter(|dep| !provided.contains(dep) && !installed.contains(dep))
         .collect()
 }
 
@@ -314,6 +370,104 @@ mod tests {
         let deps = scan_content(content);
         assert!(!deps.contains("fakepkg"));
         assert!(deps.contains("realpkg"));
+    }
+
+    /// Issue #101: `ftools` loads its own Mata source with `findfile`. Those
+    /// files ship inside the package, so they are not missing dependencies.
+    #[test]
+    fn test_self_shipped_mata_not_reported() {
+        let installed: HashSet<String> = HashSet::new();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("fcollapse.ado"),
+            "findfile \"ftools.mata\"\nfindfile \"fcollapse_main.mata\"\n",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("local_inlist.ado"),
+            "findfile \"ftools_type_aliases.mata\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("ftools.mata"), "// mata source").unwrap();
+        std::fs::write(dir.path().join("fcollapse_main.mata"), "// mata source").unwrap();
+        std::fs::write(
+            dir.path().join("ftools_type_aliases.mata"),
+            "// mata source",
+        )
+        .unwrap();
+
+        let missing = find_missing_deps("ftools", dir.path(), &installed);
+        assert!(
+            missing.is_empty(),
+            "expected no missing deps, got {missing:?}"
+        );
+    }
+
+    /// The self-provided set covers every file type a package ships that can
+    /// define a name, not just `.ado`.
+    #[test]
+    fn test_self_shipped_non_ado_files_not_reported() {
+        let installed: HashSet<String> = HashSet::new();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("pkg.ado"),
+            "findfile \"pkg_helper.class\"\nfindfile \"pkg_lib.mlib\"\n\
+             findfile \"pkg_setup.do\"\nwhich pkg_sub\nrequire otherpkg\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("pkg_helper.class"), "// class").unwrap();
+        std::fs::write(dir.path().join("pkg_lib.mlib"), "// mlib").unwrap();
+        std::fs::write(dir.path().join("pkg_setup.do"), "// do").unwrap();
+        std::fs::write(dir.path().join("pkg_sub.ado"), "// sub-command").unwrap();
+
+        let missing = find_missing_deps("pkg", dir.path(), &installed);
+        assert_eq!(missing, vec!["otherpkg".to_string()]);
+    }
+
+    /// A file shipped with a compound extension is provided under either
+    /// spelling (`parallel_map_template.do.ado` in ftools).
+    #[test]
+    fn test_compound_extension_provided() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("parallel_map_template.do.ado"), "// tpl").unwrap();
+
+        let provided = provided_names("ftools", dir.path());
+        assert!(provided.contains("parallel_map_template"));
+        assert!(provided.contains("parallel_map_template.do"));
+    }
+
+    /// A reference to a package that is not shipped is still reported.
+    #[test]
+    fn test_external_dep_still_reported() {
+        let installed: HashSet<String> = HashSet::new();
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("pkg.ado"),
+            "findfile \"pkg_main.mata\"\nrequire moremata\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("pkg_main.mata"), "// mata source").unwrap();
+
+        let missing = find_missing_deps("pkg", dir.path(), &installed);
+        assert_eq!(missing, vec!["moremata".to_string()]);
+    }
+
+    /// Data files a package ships do not define names, so they do not mask a
+    /// dependency that happens to share their stem.
+    #[test]
+    fn test_data_files_do_not_provide_names() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("moremata.dta"), "// sample data").unwrap();
+
+        let provided = provided_names("pkg", dir.path());
+        assert!(!provided.contains("moremata"));
+    }
+
+    #[test]
+    fn test_provided_names_includes_package_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let provided = provided_names("MyPkg", dir.path());
+        assert!(provided.contains("mypkg"));
     }
 
     #[test]

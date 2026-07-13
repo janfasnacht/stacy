@@ -192,9 +192,11 @@ pub fn execute(args: &AddArgs) -> Result<()> {
                         // Supplement the .ado scan with deps the author declared
                         // on the manifest's `Requires:` line — these catch
                         // dependencies resolved dynamically at runtime that
-                        // static scanning misses.
+                        // static scanning misses. Names the package ships itself
+                        // are internal files, not packages to install.
+                        let provided = dep_scan::provided_names(&package_lower, &cache_dir);
                         for dep in &result.declared_deps {
-                            if dep != &package_lower
+                            if !provided.contains(dep)
                                 && !installed.contains(dep)
                                 && !missing.contains(dep)
                             {
