@@ -177,6 +177,11 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
         let has_local_paths = !options.local_ado_paths.is_empty();
 
         if let Some(lockfile) = &lockfile_opt {
+            // The lockfile only guarantees anything if the cache still holds
+            // what it names. Check before Stata starts, so a modified or
+            // absent package fails loudly instead of running (#97).
+            global_cache::verify_lockfile_against_cache(lockfile)?;
+
             let s_ado = global_cache::build_s_ado(
                 lockfile,
                 options.allow_global,

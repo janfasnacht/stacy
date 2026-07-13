@@ -65,9 +65,10 @@ tag = "v6.12.3"
 
 ## What the lockfile guarantees
 
-The lockfile is an input to `stacy install`, never an output of it:
+The lockfile is an input to `stacy install` and `stacy run`, never an output of them:
 
 - **`stacy install` installs what the lockfile pins.** It does not re-resolve versions and it does not write `stacy.lock`. If the source no longer serves the pinned version, or serves different bytes under it, the install fails and the lockfile is left untouched. This holds with and without `--frozen`.
+- **`stacy run` checks the cache against the lockfile before it starts Stata.** If a locked package is missing from the cache, or its cached files no longer hash to the locked checksum, the run fails instead of executing.
 - **Only `stacy add`, `stacy update`, and `stacy lock` write `stacy.lock`.** Moving a pin is an explicit act.
 
 ### A pinned version can become unfetchable
@@ -99,7 +100,7 @@ The checksum covers all `.ado` and `.sthlp` files in the package, sorted and con
 - SSC updates that changed the package
 - Manual modifications to cached files
 
-If checksums don't match, `stacy install` fails with an error explaining the mismatch.
+Checksums are checked by `stacy install` and again by `stacy run` before every run. Verification on `run` is always on: it reads and hashes the locked packages, which costs milliseconds against a Stata startup measured in seconds, and a default that silently runs modified code would not be a reproducibility guarantee.
 
 ## Fields Reference
 
@@ -183,6 +184,17 @@ stacy install               # Re-download
 ```
 
 If the re-download also mismatches, the source changed the package without changing its version. Run `stacy update <package>` to re-lock it, and expect your results to change.
+
+### "The package cache does not match stacy.lock"
+
+`stacy run` reports this when a locked package is missing from the cache or has been modified since it was installed:
+
+```bash
+stacy install                    # Install the locked packages
+stacy install --with dev,test    # ...including dev and test groups
+```
+
+Every package in `stacy.lock` is on the ado-path of every run, so all of them must be installed — including dev and test dependencies.
 
 ### Merge conflicts in lockfile
 

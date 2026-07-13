@@ -33,6 +33,13 @@ Multiple scripts can be run sequentially (default, fail-fast) or in parallel
 
 To check a quick result without a script file, use `stacy run -c 'display ...'`.
 
+In a project with a `stacy.lock`, run builds the ado-path from the lockfile and
+checks it against the package cache before starting Stata. Every locked package
+must be installed and must still hash to the checksum the lockfile records. A
+package that is missing, or that has been modified since it was installed, fails
+the run instead of executing. Every package in `stacy.lock` is on the ado-path,
+so dev and test dependencies must be installed too (`stacy install --with dev,test`).
+
 ## Arguments
 
 | Argument | Description |

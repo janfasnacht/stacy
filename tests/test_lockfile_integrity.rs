@@ -1,10 +1,14 @@
-//! Regression tests for the lockfile integrity guarantee (#96).
+//! Regression tests for the lockfile integrity guarantees (#96, #97).
 //!
-//! `stacy install` materializes `stacy.lock`; it never rewrites it. On a cold
-//! cache it must fetch the pinned version and fail if the source no longer
+//! #96: `stacy install` materializes `stacy.lock`; it never rewrites it. On a
+//! cold cache it must fetch the pinned version and fail if the source no longer
 //! serves it, rather than quietly locking whatever the source serves today.
 //!
-//! These tests use a `local:` package source so they run without network.
+//! #97: `stacy run` checks the locked packages against the cache before it
+//! starts Stata, so a modified or absent package cannot run silently.
+//!
+//! These tests use a `local:` package source and a fake Stata binary, so they
+//! run without network and without Stata.
 
 use assert_cmd::{cargo_bin_cmd, Command};
 use predicates::prelude::*;
@@ -199,4 +203,100 @@ fn test_frozen_install_of_matching_pin_succeeds_without_touching_lock() {
         "the pinned version should be in the cache at {}",
         installed.display()
     );
+}
+
+// ============================================================================
+// #97: `stacy run` checks the cache against the lockfile before starting Stata
+// ============================================================================
+
+/// Put a package into the global cache by hand, as a completed install would.
+#[cfg(unix)]
+fn seed_cache(cache: &TempDir, version: &str, contents: &[u8]) {
+    let dir = cache_packages_dir(cache.path())
+        .join("testpkg")
+        .join(version);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("testpkg.ado"), contents).unwrap();
+}
+
+/// Stand-in for Stata: writes the log `stacy` expects, runs nothing.
+#[cfg(unix)]
+fn write_fake_stata(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("fake-stata");
+    fs::write(
+        &path,
+        "#!/bin/sh\n\
+         for arg in \"$@\"; do last=\"$arg\"; done\n\
+         stem=$(basename \"$last\" .do)\n\
+         printf '%s\\n' 'output' 'end of do-file' > \"$stem.log\"\n",
+    )
+    .unwrap();
+    let mut perms = fs::metadata(&path).unwrap().permissions();
+    perms.set_mode(0o755);
+    fs::set_permissions(&path, perms).unwrap();
+    path
+}
+
+#[cfg(unix)]
+fn run_script(project: &TempDir, cache: &TempDir) -> assert_cmd::assert::Assert {
+    fs::write(project.path().join("analysis.do"), "display 1\n").unwrap();
+    let fake = write_fake_stata(project.path());
+
+    stacy()
+        .arg("run")
+        .arg("analysis.do")
+        .current_dir(project.path())
+        .env("STATA_BINARY", &fake)
+        .env("XDG_CACHE_HOME", cache.path())
+        .env("LOCALAPPDATA", cache.path())
+        .assert()
+}
+
+/// #97: a cached package modified after install must not run.
+#[cfg(unix)]
+#[test]
+fn test_run_fails_on_modified_cached_package() {
+    let (checksum, version) = vendored_checksum_and_version();
+    let (project, cache) = project_pinning(&version, &checksum);
+
+    seed_cache(
+        &cache,
+        &version,
+        b"program define testpkg\nend\n* TAMPERED\n",
+    );
+
+    run_script(&project, &cache)
+        .failure()
+        .stderr(predicate::str::contains("does not match stacy.lock"))
+        .stderr(predicate::str::contains("modified since install"))
+        .stderr(predicate::str::contains("testpkg"));
+}
+
+/// #97: a locked package that is not in the cache must not run.
+#[cfg(unix)]
+#[test]
+fn test_run_fails_on_absent_cached_package() {
+    let (checksum, version) = vendored_checksum_and_version();
+    let (project, cache) = project_pinning(&version, &checksum);
+
+    // Cache left empty — nothing was ever installed.
+    run_script(&project, &cache)
+        .failure()
+        .stderr(predicate::str::contains("does not match stacy.lock"))
+        .stderr(predicate::str::contains("not installed"))
+        .stderr(predicate::str::contains("testpkg"));
+}
+
+/// #97 control: an intact cache runs. Without this, the two failure tests
+/// above would pass even if `run` were broken for unrelated reasons.
+#[cfg(unix)]
+#[test]
+fn test_run_succeeds_with_intact_cache() {
+    let (checksum, version) = vendored_checksum_and_version();
+    let (project, cache) = project_pinning(&version, &checksum);
+
+    seed_cache(&cache, &version, PKG_ADO);
+
+    run_script(&project, &cache).success();
 }
