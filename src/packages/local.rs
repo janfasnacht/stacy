@@ -111,6 +111,30 @@ pub fn scan_local_directory(name: &str, dir: &std::path::Path) -> Result<LocalPa
         )));
     }
 
+    // The directory must actually hold the package that was asked for (#100).
+    // Without this, `stacy add badname --source local:<dir>` installed whatever
+    // the directory happened to contain and reported success.
+    let wanted = format!("{}.ado", name.to_lowercase());
+    if !files
+        .iter()
+        .any(|f| f.name.to_lowercase() == wanted.as_str())
+    {
+        let found: Vec<&str> = files
+            .iter()
+            .filter(|f| f.name.ends_with(".ado"))
+            .map(|f| f.name.as_str())
+            .collect();
+        return Err(Error::Config(format!(
+            "Package '{}' not found in local directory: {}\n  \
+             expected {}, found: {}\n  \
+             hint: use the name of the .ado file, or point --source at the directory that holds it",
+            name,
+            dir.display(),
+            wanted,
+            found.join(", ")
+        )));
+    }
+
     let package_checksum = calculate_combined_checksum(&checksums);
 
     Ok(LocalPackageDownload {
@@ -155,6 +179,50 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("not found"));
+    }
+
+    #[test]
+    fn test_scan_rejects_name_not_in_directory() {
+        // #100: the requested name has to be the package that's actually there.
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("othername.ado"),
+            "program define othername\nend",
+        )
+        .unwrap();
+
+        let err = scan_local_directory("badname", temp.path())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("badname"),
+            "error should name the request: {}",
+            err
+        );
+        assert!(
+            err.contains("othername.ado"),
+            "error should list what the directory holds: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_scan_accepts_case_insensitive_name_match() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("MyPkg.ado"), "program define mypkg\nend").unwrap();
+
+        let result = scan_local_directory("mypkg", temp.path()).unwrap();
+        assert_eq!(result.files.len(), 1);
+    }
+
+    #[test]
+    fn test_scan_accepts_extra_files_alongside_the_named_package() {
+        let temp = TempDir::new().unwrap();
+        fs::write(temp.path().join("mypkg.ado"), "program define mypkg\nend").unwrap();
+        fs::write(temp.path().join("helper.ado"), "program define helper\nend").unwrap();
+
+        let result = scan_local_directory("mypkg", temp.path()).unwrap();
+        assert_eq!(result.files.len(), 2);
     }
 
     #[test]
