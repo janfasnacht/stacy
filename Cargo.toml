@@ -78,7 +78,7 @@ libc = "0.2"
 # Testing
 assert_cmd = "2.2"      # CLI testing
 predicates = "3.1"      # Test assertions
-serial_test = "3.5"     # Sequential test execution
+serial_test = "4.0"     # Sequential test execution
 
 # Benchmarking
 criterion = { version = "0.8", features = ["html_reports"] }
