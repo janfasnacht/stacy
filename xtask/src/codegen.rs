@@ -36,14 +36,50 @@ const HAND_MAINTAINED_VERSIONED_ADOS: &[&str] = &[
     "stacy_setup.ado",
 ];
 
+/// Hand-maintained .sthlp files whose `{* *! version ...}` header is kept in
+/// sync with `Cargo.toml` by codegen. The bodies remain hand-edited.
+const HAND_MAINTAINED_VERSIONED_HELP: &[&str] = &["stacy_setup.sthlp"];
+
+/// Hand-maintained package manifests whose `d Distribution-Date:` line is kept
+/// in sync with the release date of the current version. Stata compares this
+/// date to decide whether `adoupdate` has anything to offer, so a stale one
+/// hides every release from users who installed with `net install`.
+const HAND_MAINTAINED_DATED_MANIFESTS: &[&str] = &["stacy.pkg", "stata.toc"];
+
 /// Replace the `*! Version: ...` header line in a hand-maintained .ado file
 /// with the current package version. Other lines are preserved verbatim.
 fn rewrite_version_header(content: &str, version: &str) -> String {
+    rewrite_prefixed_line(content, "*! Version: ", &format!("*! Version: {}", version))
+}
+
+/// Replace the `{* *! version ...}` header line in a hand-maintained .sthlp
+/// file with the current package version. Other lines are preserved verbatim.
+fn rewrite_help_version_header(content: &str, version: &str) -> String {
+    rewrite_prefixed_line(
+        content,
+        "{* *! version ",
+        &format!("{{* *! version {}}}{{...}}", version),
+    )
+}
+
+/// Replace the `d Distribution-Date: ...` line in a hand-maintained `.pkg` or
+/// `.toc` with `date` (YYYYMMDD). Other lines are preserved verbatim.
+fn rewrite_distribution_date(content: &str, date: &str) -> String {
+    rewrite_prefixed_line(
+        content,
+        "d Distribution-Date: ",
+        &format!("d Distribution-Date: {}", date),
+    )
+}
+
+/// Rewrite every line starting with `prefix` to `replacement`, keeping line
+/// endings and all other lines verbatim.
+fn rewrite_prefixed_line(content: &str, prefix: &str, replacement: &str) -> String {
     let mut out = String::with_capacity(content.len());
     for line in content.split_inclusive('\n') {
         let stripped = line.strip_suffix('\n').unwrap_or(line);
-        if stripped.starts_with("*! Version: ") {
-            out.push_str(&format!("*! Version: {}", version));
+        if stripped.starts_with(prefix) {
+            out.push_str(replacement);
             if line.ends_with('\n') {
                 out.push('\n');
             }
@@ -52,6 +88,13 @@ fn rewrite_version_header(content: &str, version: &str) -> String {
         }
     }
     out
+}
+
+/// The release date of `version` as YYYYMMDD, from CHANGELOG.md. `None` when
+/// the version has no entry yet, in which case manifests are left alone rather
+/// than stamped with a date that would change on every run.
+fn distribution_date(version: &str) -> Option<String> {
+    Some(extract_changelog_date(version)?.replace('-', ""))
 }
 
 /// Run code generation
@@ -80,7 +123,7 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
         let ado_path = stata_dir.join(format!("{}.ado", command.stata_command));
 
         // Generate .sthlp file
-        let sthlp_content = generate_sthlp(name, command, &schema)?;
+        let sthlp_content = generate_sthlp(name, command, &version)?;
         let sthlp_path = stata_dir.join(format!("{}.sthlp", command.stata_command));
 
         generated_files.push((ado_path, ado_content));
@@ -92,7 +135,7 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
     generated_files.push((stata_dir.join("stacy.ado"), main_ado));
 
     // Generate main stacy.sthlp
-    let main_sthlp = generate_main_sthlp(&schema)?;
+    let main_sthlp = generate_main_sthlp(&schema, &version)?;
     generated_files.push((stata_dir.join("stacy.sthlp"), main_sthlp));
 
     // Generate wrapper/binary version-compatibility helpers. Split into three
@@ -119,6 +162,26 @@ pub fn run(check: bool, verbose: bool) -> Result<()> {
             .with_context(|| format!("Failed to read {}", path.display()))?;
         let updated = rewrite_version_header(&existing, &version);
         generated_files.push((path, updated));
+    }
+
+    for file in HAND_MAINTAINED_VERSIONED_HELP {
+        let path = stata_dir.join(file);
+        let existing = std::fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read {}", path.display()))?;
+        let updated = rewrite_help_version_header(&existing, &version);
+        generated_files.push((path, updated));
+    }
+
+    // Stamp the release date of this version on the package manifests so
+    // adoupdate sees a new distribution.
+    if let Some(date) = distribution_date(&version) {
+        for file in HAND_MAINTAINED_DATED_MANIFESTS {
+            let path = stata_dir.join(file);
+            let existing = std::fs::read_to_string(&path)
+                .with_context(|| format!("Failed to read {}", path.display()))?;
+            let updated = rewrite_distribution_date(&existing, &date);
+            generated_files.push((path, updated));
+        }
     }
 
     // Generate documentation markdown files
@@ -456,14 +519,14 @@ fn build_stata_syntax(command: &Command) -> String {
 // =============================================================================
 
 /// Generate a command help .sthlp file
-fn generate_sthlp(name: &str, command: &Command, schema: &Schema) -> Result<String> {
+fn generate_sthlp(name: &str, command: &Command, version: &str) -> Result<String> {
     let mut out = String::new();
 
     // Header
     out.push_str("{smcl}\n");
     out.push_str(&format!(
         "{{* *! version {} - AUTO-GENERATED}}{{...}}\n",
-        schema.meta.version
+        version
     ));
     out.push_str(&format!(
         "{{viewerjumpto \"Syntax\" \"{}##syntax\"}}{{...}}\n",
@@ -726,13 +789,13 @@ fn generate_main_ado(schema: &Schema, version: &str) -> Result<String> {
 }
 
 /// Generate the main stacy.sthlp help file
-fn generate_main_sthlp(schema: &Schema) -> Result<String> {
+fn generate_main_sthlp(schema: &Schema, version: &str) -> Result<String> {
     let mut out = String::new();
 
     out.push_str("{smcl}\n");
     out.push_str(&format!(
         "{{* *! version {} - AUTO-GENERATED}}{{...}}\n",
-        schema.meta.version
+        version
     ));
     out.push_str("{viewerjumpto \"Syntax\" \"stacy##syntax\"}{...}\n");
     out.push_str("{viewerjumpto \"Description\" \"stacy##description\"}{...}\n");
@@ -1348,4 +1411,33 @@ fn chrono_free_today() -> String {
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "1970-01-01".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rewrites_only_the_help_version_line() {
+        let content = "{smcl}\n{* *! version 0.1.0 18jan2026}{...}\n{title:Title}\n";
+        assert_eq!(
+            rewrite_help_version_header(content, "1.5.1"),
+            "{smcl}\n{* *! version 1.5.1}{...}\n{title:Title}\n"
+        );
+    }
+
+    #[test]
+    fn rewrites_only_the_distribution_date_line() {
+        let content = "d Requires: Stata 14.0 or higher\nd Distribution-Date: 20260118\nd\n";
+        assert_eq!(
+            rewrite_distribution_date(content, "20260713"),
+            "d Requires: Stata 14.0 or higher\nd Distribution-Date: 20260713\nd\n"
+        );
+    }
+
+    #[test]
+    fn leaves_a_file_without_the_line_untouched() {
+        let content = "d stacy\nf stacy.ado\n";
+        assert_eq!(rewrite_distribution_date(content, "20260713"), content);
+    }
 }

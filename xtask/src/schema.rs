@@ -37,9 +37,6 @@ pub struct ExitCodeDef {
 /// Schema metadata
 #[derive(Debug, Deserialize)]
 pub struct Meta {
-    /// Schema version (for compatibility tracking)
-    #[allow(dead_code)]
-    pub version: String,
     /// Minimum Stata version required
     #[allow(dead_code)]
     pub stata_minimum: String,
@@ -251,10 +248,6 @@ mod tests {
 
         let schema = Schema::load(&schema_path).expect("Failed to load schema");
 
-        assert!(
-            !schema.meta.version.is_empty(),
-            "schema version should not be empty"
-        );
         assert!(schema.commands.contains_key("run"));
         assert!(schema.commands.contains_key("doctor"));
     }

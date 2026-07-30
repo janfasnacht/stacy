@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 0.1.0 18jan2026}{...}
+{* *! version 1.5.0}{...}
 {viewerjumpto "Syntax" "stacy_setup##syntax"}{...}
 {viewerjumpto "Description" "stacy_setup##description"}{...}
 {viewerjumpto "Options" "stacy_setup##options"}{...}

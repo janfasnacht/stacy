@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Help files report the version they ship with. Every `.sthlp` header read `1.2.0` (`stacy_setup.sthlp`, `0.1.0`) while the `.ado` files read the package version, so `help stacy` disagreed with the command it documents (#114).
+- `stacy.pkg` and `stata.toc` carry the release date, so `adoupdate` sees new releases. Both had advertised `20260118` since 1.0.0 (#114).
+
 ## [1.5.0] - 2026-07-13
 
 Commands that could not finish their work used to exit 0. They now exit nonzero, which will surface failures a script or CI step previously ran past. See Changed.
@@ -180,6 +185,12 @@ Initial public release.
 - `--format json` and `--format stata` output modes
 - Cross-platform support: macOS, Linux, Windows
 
+[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/janfasnacht/stacy/compare/v1.4.0...v1.5.0
+[1.4.0]: https://github.com/janfasnacht/stacy/compare/v1.3.1...v1.4.0
+[1.3.1]: https://github.com/janfasnacht/stacy/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/janfasnacht/stacy/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/janfasnacht/stacy/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/janfasnacht/stacy/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/janfasnacht/stacy/compare/v1.0.2...v1.1.0
 [1.0.2]: https://github.com/janfasnacht/stacy/compare/v1.0.1...v1.0.2
