@@ -224,8 +224,31 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
         cmd.env(&env_key, value);
     }
 
+    // Run Stata in its own process group. `stata-mp` does not stay the process
+    // we spawned — it leaves an engine behind that outlives the process we hold
+    // a handle to, so signalling that handle alone left Stata spinning forever
+    // after a timeout or a crash (#118). A group can be signalled whole.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: `setpgid` is async-signal-safe, which is the requirement for
+        // anything run between fork and exec.
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+
     // Spawn process
     let mut child = cmd.spawn()?;
+
+    // The child leads its own group, so the terminal no longer delivers Ctrl-C
+    // to it. Forward signals for as long as it is alive.
+    let _forwarding = crate::executor::signals::register(child.id() as i32);
 
     // Drain stderr on a background thread so the kernel pipe buffer can't
     // deadlock the child if it writes more than ~64 KiB. The reader caps the
@@ -302,43 +325,86 @@ pub fn run_stata(script: &Path, options: RunOptions) -> Result<RunResult> {
     })
 }
 
+/// How long a timed-out run may take to go away on its own before it is killed
+/// outright. Only ever paid by a process that ignores the polite signal.
+const KILL_GRACE: Duration = Duration::from_secs(2);
+
 /// Wait for process with timeout
 ///
-/// If timeout expires, kills the process with SIGTERM, then SIGKILL after 5s.
-/// Uses channel-based cancellation so the watchdog is cleanly stopped when
-/// the process exits before the timeout.
+/// On timeout the whole process group is terminated, then killed outright if it
+/// is still there after `KILL_GRACE`. The wait for the grace period is
+/// cancellable, so a run that dies immediately — the normal case — returns at
+/// once instead of paying the grace period on every timeout (#118).
 fn wait_with_timeout(child: &mut std::process::Child, timeout: Duration) -> Result<ExitStatus> {
     use std::sync::mpsc;
     use std::thread;
 
-    #[cfg(unix)]
     let pid = child.id();
-
     let (tx, rx) = mpsc::channel();
 
     let watchdog = thread::spawn(move || {
-        // Wait for timeout OR cancellation signal
-        if rx.recv_timeout(timeout).is_err() {
-            // Timeout expired, no cancel received — kill process
-            #[cfg(unix)]
-            unsafe {
-                libc::kill(pid as i32, libc::SIGTERM);
-
-                // SIGKILL escalation — wait 5s, then force kill if still alive
-                thread::sleep(Duration::from_secs(5));
-                if libc::kill(pid as i32, 0) == 0 {
-                    libc::kill(pid as i32, libc::SIGKILL);
-                }
-            }
+        // Cancelled before the deadline: the run finished on its own.
+        if rx.recv_timeout(timeout).is_ok() {
+            return false;
         }
-        // If Ok(_) received, process exited normally — do nothing
+
+        terminate_group(pid);
+
+        // Escalate only if the run is still there when the grace period ends.
+        if rx.recv_timeout(KILL_GRACE).is_err() {
+            kill_group(pid);
+        }
+        true
     });
 
     let status = child.wait()?;
-    let _ = tx.send(()); // Cancel watchdog (ignore error if thread already exited)
-    let _ = watchdog.join(); // Wait for clean thread shutdown
+    let _ = tx.send(()); // Cancel the watchdog (ignored if it already finished)
+    let timed_out = watchdog.join().unwrap_or(false);
+
+    // The process we waited on is gone, but anything it spawned into the group
+    // may not be — that is how Stata used to survive its own timeout. Sweep the
+    // group, which is empty in the ordinary case and costs one failed syscall.
+    if timed_out {
+        kill_group(pid);
+    }
 
     Ok(status)
+}
+
+/// Ask every process in `pid`'s group to exit.
+fn terminate_group(pid: u32) {
+    #[cfg(unix)]
+    // SAFETY: a negative pid addresses the process group.
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGTERM);
+    }
+
+    #[cfg(windows)]
+    taskkill(pid);
+}
+
+/// Kill every process in `pid`'s group outright.
+fn kill_group(pid: u32) {
+    #[cfg(unix)]
+    // SAFETY: a negative pid addresses the process group.
+    unsafe {
+        libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+
+    #[cfg(windows)]
+    taskkill(pid);
+}
+
+/// Windows has no process groups to signal and no SIGTERM to send. `taskkill
+/// /T` walks the process tree, which is the behavior we want, and ships with
+/// every supported version, which beats taking a dependency for it.
+#[cfg(windows)]
+fn taskkill(pid: u32) {
+    let _ = Command::new("taskkill")
+        .args(["/T", "/F", "/PID", &pid.to_string()])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
 }
 
 /// True iff the process was terminated by a signal (Unix). Always false on
@@ -525,6 +591,106 @@ mod tests {
             "stderr should be capped at {} bytes, got {}",
             super::STDERR_CAPTURE_LIMIT,
             result.stderr.len()
+        );
+    }
+
+    /// A timed-out run used to pay a fixed 5s escalation wait before returning,
+    /// so `--timeout 2` took 7s (#118). Killing was never the slow part.
+    #[cfg(unix)]
+    #[test]
+    fn test_timeout_returns_without_waiting_out_the_grace_period() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let script = temp.path().join("sleeper.sh");
+        write_executable(&script, "#!/bin/sh\nsleep 60\n");
+        let script_str = script.to_str().unwrap();
+        let log_file = temp.path().join("dummy.log");
+
+        let result = (0..3)
+            .find_map(|attempt| {
+                let options = RunOptions::new(script_str)
+                    .with_log_file(log_file.clone())
+                    .with_timeout(Duration::from_secs(1));
+                match run_stata(Path::new("anything.do"), options) {
+                    Ok(r) => Some(r),
+                    Err(crate::error::Error::Io(e))
+                        if e.kind() == std::io::ErrorKind::ExecutableFileBusy =>
+                    {
+                        std::thread::sleep(Duration::from_millis(50 * (attempt + 1)));
+                        None
+                    }
+                    Err(e) => panic!("spawn: {e:?}"),
+                }
+            })
+            .expect("spawn after ETXTBSY retries");
+
+        assert!(!result.completed, "a killed run has not completed");
+        assert!(result.signaled, "should have been killed by a signal");
+        assert!(
+            result.duration < Duration::from_secs(3),
+            "returned after {:?}: the grace period should not be paid by a run \
+             that dies on the first signal",
+            result.duration
+        );
+    }
+
+    /// Stata leaves an engine running that is not the process stacy spawned, so
+    /// signalling only that process left Stata alive after the timeout (#118).
+    /// The stub has the same shape: a parent waiting on a process it spawned.
+    ///
+    /// The descendant announces itself by writing a file three seconds in, and
+    /// the test asserts that file never appears. Asserting on the marker rather
+    /// than on a pid keeps the test honest: a descendant that simply exited on
+    /// its own cannot be mistaken for one that was killed.
+    #[cfg(unix)]
+    #[test]
+    fn test_timeout_kills_what_the_run_spawned() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let script = temp.path().join("spawner.sh");
+        let marker = temp.path().join("survivor.marker");
+        write_executable(
+            &script,
+            &format!(
+                "#!/bin/sh\n( sleep 3; echo alive > {} ) &\nwait\n",
+                marker.display()
+            ),
+        );
+        let script_str = script.to_str().unwrap();
+        let log_file = temp.path().join("dummy.log");
+
+        let result = (0..3)
+            .find_map(|attempt| {
+                let options = RunOptions::new(script_str)
+                    .with_log_file(log_file.clone())
+                    .with_timeout(Duration::from_secs(1));
+                match run_stata(Path::new("anything.do"), options) {
+                    Ok(r) => Some(r),
+                    Err(crate::error::Error::Io(e))
+                        if e.kind() == std::io::ErrorKind::ExecutableFileBusy =>
+                    {
+                        std::thread::sleep(Duration::from_millis(50 * (attempt + 1)));
+                        None
+                    }
+                    Err(e) => panic!("spawn: {e:?}"),
+                }
+            })
+            .expect("spawn after ETXTBSY retries");
+        assert!(!result.completed, "a killed run has not completed");
+        assert!(
+            result.duration < Duration::from_secs(3),
+            "the run itself should have been killed at the timeout, not left to \
+             finish ({:?})",
+            result.duration
+        );
+
+        // Outlast the descendant's own schedule, so a survivor has every chance
+        // to write the marker.
+        std::thread::sleep(Duration::from_secs(4));
+
+        assert!(
+            !marker.exists(),
+            "a process the run spawned was still alive after the timeout — it \
+             wrote {}",
+            marker.display()
         );
     }
 

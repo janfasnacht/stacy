@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A killed run no longer leaves Stata running. Stata was signalled through the one process stacy spawned, which is not the process that keeps running, so a timeout — or stacy being killed, or Ctrl-C — could leave a Stata process burning a core indefinitely. Runs now get their own process group, and stacy signals the group and forwards SIGINT, SIGTERM and SIGHUP to it (#118).
+- `--timeout` returns when the run dies instead of 5 seconds later. The escalation to a forced kill was an unconditional wait; it is now cancelled by the run exiting, and only a run that ignores the first signal waits it out (#118).
+- `--timeout` does something on Windows. The kill was compiled in for Unix only, so the timeout expired and nothing happened; Windows now terminates the process tree (#118).
+
 ## [1.5.1] - 2026-07-30
 
 ### Fixed
