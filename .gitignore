@@ -20,6 +20,8 @@ Thumbs.db
 # Testing
 /tests/tmp/
 *.log
+# except the committed parser fixtures, which are Stata output kept verbatim
+!/tests/fixtures/logs/*.log
 
 # Local development
 /scratch/

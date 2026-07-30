@@ -35,7 +35,8 @@ pub struct ProjectRoot {
 /// * `start_dir` - The directory to start searching from
 ///
 /// # Examples
-/// ```ignore
+/// ```no_run
+/// # fn main() -> anyhow::Result<()> {
 /// use std::path::Path;
 /// use stacy::project::root::find_project_root;
 ///
@@ -43,6 +44,8 @@ pub struct ProjectRoot {
 /// if let Some(root) = root {
 ///     println!("Project root: {}", root.path.display());
 /// }
+/// # Ok(())
+/// # }
 /// ```
 pub fn find_project_root(start_dir: &Path) -> Result<Option<ProjectRoot>> {
     // Canonicalize the start directory to resolve symlinks and get absolute path
