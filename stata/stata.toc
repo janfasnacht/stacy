@@ -15,6 +15,6 @@ d   - Project initialization and configuration
 d
 d Requires: Stata 14.0 or higher
 d
-d Distribution-Date: 20260118
+d Distribution-Date: 20260713
 d
 p stacy Reproducible Stata Workflow Tool

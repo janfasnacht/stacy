@@ -7,11 +7,10 @@
 #   3. Help files (stata/*.sthlp) - generated from this schema
 #   4. Documentation (docs/src/commands/*.md) - generated from this schema
 #
-# Version: 1.2.0
-# Last Updated: 2026-03-15
+# Versions shown in generated files come from Cargo.toml, not from here.
+# Last Updated: 2026-07-30
 
 [meta]
-version = "1.2.0"
 stata_minimum = "14.0"
 description = "Reproducible Stata Workflow Tool"
 

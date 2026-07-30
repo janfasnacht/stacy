@@ -678,6 +678,84 @@ fn test_version_compat_ados_match_cargo_toml() {
     );
 }
 
+/// The package version from Cargo.toml.
+fn package_version() -> String {
+    let cargo_toml = fs::read_to_string(Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+        .expect("Failed to read Cargo.toml");
+    let parsed: toml::Value = toml::from_str(&cargo_toml).expect("Failed to parse Cargo.toml");
+    parsed["package"]["version"]
+        .as_str()
+        .expect("Cargo.toml missing package.version")
+        .to_string()
+}
+
+/// Every `.sthlp` header must carry the package version, or `help stacy`
+/// reports a different version than the command it documents (issue #114).
+#[test]
+fn test_sthlp_headers_match_cargo_toml() {
+    let pkg_version = package_version();
+    let stata_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("stata");
+    let expected = format!("{{* *! version {}", pkg_version);
+
+    let entries = fs::read_dir(&stata_dir).expect("Failed to read stata/");
+    for entry in entries {
+        let entry = entry.expect("Failed to read dir entry");
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("sthlp") {
+            continue;
+        }
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|_| panic!("Failed to read {}", path.display()));
+        let header = content
+            .lines()
+            .find(|line| line.starts_with("{* *! version "))
+            .unwrap_or_else(|| panic!("{} has no version header", path.display()));
+
+        assert!(
+            header.starts_with(&expected),
+            "{}: header `{}` does not match Cargo.toml ({}). Run `cargo xtask codegen`.",
+            path.display(),
+            header,
+            pkg_version,
+        );
+    }
+}
+
+/// Stata compares `Distribution-Date` against the installed copy to decide
+/// whether `adoupdate` has anything to offer, so it must move with each
+/// release (issue #114).
+#[test]
+fn test_manifest_distribution_date_matches_changelog() {
+    let pkg_version = package_version();
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let changelog =
+        fs::read_to_string(root.join("CHANGELOG.md")).expect("Failed to read CHANGELOG");
+
+    // An unreleased version has no CHANGELOG entry yet; codegen leaves the
+    // manifests alone until it does.
+    let Some(date) = changelog
+        .lines()
+        .find(|line| line.starts_with(&format!("## [{}]", pkg_version)))
+        .and_then(|line| line.split(" - ").nth(1))
+        .map(|date| date.trim().replace('-', ""))
+    else {
+        return;
+    };
+
+    let expected = format!("d Distribution-Date: {}", date);
+    for file in ["stacy.pkg", "stata.toc"] {
+        let content = fs::read_to_string(root.join("stata").join(file))
+            .unwrap_or_else(|_| panic!("Failed to read {}", file));
+        assert!(
+            content.lines().any(|line| line == expected),
+            "{} does not carry the {} release date ({}). Run `cargo xtask codegen`.",
+            file,
+            pkg_version,
+            date,
+        );
+    }
+}
+
 /// Stata only autoloads an `.ado` when its basename matches the first
 /// `program define` — otherwise callers hit `r(199)` (issue #37).
 #[test]
