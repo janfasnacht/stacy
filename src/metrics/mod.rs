@@ -8,7 +8,9 @@
 //! - Total time: End-to-end CLI execution time
 //!
 //! Usage:
-//! ```ignore
+//! ```
+//! use stacy::metrics::Metrics;
+//!
 //! let mut metrics = Metrics::new();
 //! metrics.start_phase("spawn");
 //! // ... spawn process

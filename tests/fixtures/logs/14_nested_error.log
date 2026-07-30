@@ -1,0 +1,32 @@
+
+. * Test nested do-files (error in nested file)
+. clear all
+
+. set obs 100
+Number of observations (_N) was 0, now 100.
+
+. gen x = rnormal()
+
+. 
+. display "=== Main script: About to call helper with error ==="
+=== Main script: About to call helper with error ===
+
+. 
+. * Call nested do-file that will fail
+. do nested/helper_with_error.do
+
+. * Helper script with error
+. display "=== Inside helper_with_error.do ==="
+=== Inside helper_with_error.do ===
+
+. 
+. * This will fail - bad_var doesn't exist
+. gen y = bad_var + 1
+bad_var not found
+r(111);
+
+end of do-file
+r(111);
+
+end of do-file
+r(111);

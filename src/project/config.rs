@@ -372,11 +372,17 @@ pub struct ComplexTask {
 /// * `project_root` - Path to the project root directory
 ///
 /// # Examples
-/// ```ignore
+/// ```no_run
+/// # fn main() -> anyhow::Result<()> {
+/// use stacy::project::config::load_config;
+/// use std::path::Path;
+///
 /// let config = load_config(Path::new("/path/to/project"))?;
 /// if let Some(config) = config {
 ///     println!("Log dir: {}", config.run.log_dir.display());
 /// }
+/// # Ok(())
+/// # }
 /// ```
 pub fn load_config(project_root: &Path) -> Result<Option<Config>> {
     let config_path = project_root.join("stacy.toml");

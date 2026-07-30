@@ -1,0 +1,44 @@
+
+. * Test nested do-files (success case)
+. clear all
+
+. set obs 100
+Number of observations (_N) was 0, now 100.
+
+. gen x = rnormal()
+
+. 
+. display "=== Main script: About to call helper ==="
+=== Main script: About to call helper ===
+
+. 
+. * Call nested do-file
+. do nested/helper.do
+
+. * Helper script called by main script
+. display "=== Inside helper.do ==="
+=== Inside helper.do ===
+
+. 
+. gen y = x + rnormal()
+
+. 
+. display "Helper completed"
+Helper completed
+
+. 
+end of do-file
+
+. 
+. display "=== Main script: Back from helper ==="
+=== Main script: Back from helper ===
+
+. summarize x y
+
+    Variable |        Obs        Mean    Std. dev.       Min        Max
+-------------+---------------------------------------------------------
+           x |        100   -.1445693    .9636993  -2.566291   2.436316
+           y |        100   -.0763759    1.417581  -3.887241   4.106437
+
+. 
+end of do-file
