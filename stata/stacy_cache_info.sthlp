@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.5.0 - AUTO-GENERATED}{...}
+{* *! version 1.5.1 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_cache_info##syntax"}{...}
 {viewerjumpto "Description" "stacy_cache_info##description"}{...}
 {viewerjumpto "Options" "stacy_cache_info##options"}{...}
