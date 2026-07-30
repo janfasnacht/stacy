@@ -4,6 +4,7 @@ pub mod log_reader;
 pub mod progress;
 pub mod run_paths;
 pub mod runner;
+pub mod signals;
 pub mod verbosity;
 pub mod wrapper;
 
