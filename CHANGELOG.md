@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-30
+
 ### Fixed
 
 - Help files report the version they ship with. Every `.sthlp` header read `1.2.0` (`stacy_setup.sthlp`, `0.1.0`) while the `.ado` files read the package version, so `help stacy` disagreed with the command it documents (#114).
@@ -185,7 +187,8 @@ Initial public release.
 - `--format json` and `--format stata` output modes
 - Cross-platform support: macOS, Linux, Windows
 
-[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/janfasnacht/stacy/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/janfasnacht/stacy/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/janfasnacht/stacy/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/janfasnacht/stacy/compare/v1.3.1...v1.4.0
 [1.3.1]: https://github.com/janfasnacht/stacy/compare/v1.3.0...v1.3.1
