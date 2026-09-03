@@ -1,6 +1,6 @@
 *! _stacy_find_binary.ado - Locate stacy binary
 *! Part of stacy: Reproducible Stata Workflow Tool
-*! Version: 1.5.1
+*! Version: 1.5.2
 
 /*
     Find the stacy binary path.

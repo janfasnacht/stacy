@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-09-03
+
 ### Changed
 
 - Prebuilt GNU/Linux releases support x86-64 only. The untested aarch64 archive is no longer published.
