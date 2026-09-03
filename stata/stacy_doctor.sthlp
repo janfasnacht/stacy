@@ -1,5 +1,5 @@
 {smcl}
-{* *! version 1.5.1 - AUTO-GENERATED}{...}
+{* *! version 1.5.2 - AUTO-GENERATED}{...}
 {viewerjumpto "Syntax" "stacy_doctor##syntax"}{...}
 {viewerjumpto "Description" "stacy_doctor##description"}{...}
 {viewerjumpto "Options" "stacy_doctor##options"}{...}

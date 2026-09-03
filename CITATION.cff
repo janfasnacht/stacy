@@ -8,8 +8,8 @@ authors:
     email: jfasnacht@uchicago.edu
 repository-code: https://github.com/janfasnacht/stacy
 license: MIT
-version: 1.5.1
-date-released: 2026-07-30
+version: 1.5.2
+date-released: 2026-09-03
 keywords:
   - stata
   - reproducibility
