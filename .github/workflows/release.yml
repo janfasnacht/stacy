@@ -29,6 +29,98 @@ jobs:
           [ "$tag" = "$cargo_v" ] || { echo "Cargo.toml has $cargo_v, tag is $tag"; exit 1; }
           [ "$tag" = "$cff_v" ] || { echo "CITATION.cff has $cff_v, tag is $tag (rerun 'cargo xtask codegen' and commit)"; exit 1; }
 
+  build-linux:
+    name: Build (x86_64-unknown-linux-gnu)
+    needs: preflight
+    runs-on: ubuntu-latest
+    container:
+      image: quay.io/rockylinux/rockylinux:8.10.20240528@sha256:e8a49c5403b687db05d4d67333fa45808fbe74f36e683cec7abb1f7d0f2338c6
+
+    steps:
+      - name: Install build tools
+        run: dnf install -y binutils gcc git gzip tar
+
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+            sh -s -- -y --profile minimal --default-toolchain stable \
+              --target x86_64-unknown-linux-gnu
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          cache-all-crates: true
+          key: x86_64-unknown-linux-gnu
+
+      - name: Build release binary
+        run: cargo build --locked --release --target x86_64-unknown-linux-gnu
+
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Package
+        run: |
+          tar -C target/x86_64-unknown-linux-gnu/release -czf \
+            stacy-${{ steps.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz stacy
+
+      - name: Enforce glibc 2.28 baseline
+        run: |
+          mkdir packaged
+          tar -xzf stacy-${{ steps.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz -C packaged
+          required=$(readelf --version-info packaged/stacy | grep -o 'GLIBC_[0-9.]*' | sort -Vu)
+          test -n "$required"
+          maximum=$(printf '%s\n' "$required" | tail -n 1)
+          echo "Highest required glibc version: $maximum"
+          test "$(printf '%s\n' "$maximum" GLIBC_2.28 | sort -V | tail -n 1)" = GLIBC_2.28
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: stacy-x86_64-unknown-linux-gnu
+          path: stacy-${{ steps.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
+
+  test-linux:
+    name: Test Linux package (${{ matrix.name }})
+    needs: build-linux
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: glibc 2.28
+            image: quay.io/rockylinux/rockylinux:8.10.20240528@sha256:e8a49c5403b687db05d4d67333fa45808fbe74f36e683cec7abb1f7d0f2338c6
+          - name: Debian 12
+            image: debian:12@sha256:6ebd97fa83deb272194a2cf015b3d26a4d538e9ad3a7a79d544c8af5b0a01443
+    container:
+      image: ${{ matrix.image }}
+
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v8
+        with:
+          name: stacy-x86_64-unknown-linux-gnu
+          path: artifact
+
+      - name: Smoke test packaged binary
+        env:
+          STACY_NO_UPDATE_CHECK: 1
+        run: |
+          mkdir packaged
+          tar -xzf artifact/stacy-${GITHUB_REF_NAME}-x86_64-unknown-linux-gnu.tar.gz -C packaged
+          packaged/stacy --version
+          packaged/stacy explain 199
+
+          set +e
+          packaged/stacy doctor --format json > doctor.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          grep -q 'Stata binary not found' doctor.json
+
   build:
     name: Build (${{ matrix.target }})
     needs: preflight
@@ -37,13 +129,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
-          - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
-            archive: tar.gz
-            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             archive: tar.gz
@@ -62,12 +147,6 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross-compilation tools
-        if: matrix.cross
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
         with:
@@ -75,18 +154,7 @@ jobs:
           key: ${{ matrix.target }}
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross && 'aarch64-linux-gnu-gcc' || '' }}
-
-      - name: Smoke test release binary
-        if: ${{ !matrix.cross }}
-        shell: bash
-        run: |
-          ./target/${{ matrix.target }}/release/stacy${{ matrix.archive == 'zip' && '.exe' || '' }} --version
-          ./target/${{ matrix.target }}/release/stacy${{ matrix.archive == 'zip' && '.exe' || '' }} explain 199
-          # doctor exits 1 when Stata is not installed (expected in CI)
-          ./target/${{ matrix.target }}/release/stacy${{ matrix.archive == 'zip' && '.exe' || '' }} doctor --format json || true
+        run: cargo build --locked --release --target ${{ matrix.target }}
 
       - name: Get version
         id: version
@@ -109,6 +177,41 @@ jobs:
           Compress-Archive -Path stacy.exe -DestinationPath ../../../stacy-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip
           cd ../../..
 
+      - name: Smoke test packaged binary (Unix)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        env:
+          STACY_NO_UPDATE_CHECK: 1
+        run: |
+          mkdir packaged
+          tar -xzf stacy-${{ steps.version.outputs.version }}-${{ matrix.target }}.tar.gz -C packaged
+          packaged/stacy --version
+          packaged/stacy explain 199
+
+          set +e
+          packaged/stacy doctor --format json > doctor.json
+          status=$?
+          set -e
+          test "$status" -eq 1
+          grep -q 'Stata binary not found' doctor.json
+
+      - name: Smoke test packaged binary (Windows)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        env:
+          STACY_NO_UPDATE_CHECK: 1
+        run: |
+          Expand-Archive -Path stacy-${{ steps.version.outputs.version }}-${{ matrix.target }}.zip -DestinationPath packaged
+          & packaged/stacy.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "stacy --version failed" }
+          & packaged/stacy.exe explain 199
+          if ($LASTEXITCODE -ne 0) { throw "stacy explain failed" }
+          & packaged/stacy.exe doctor --format json | Out-File doctor.json
+          if ($LASTEXITCODE -ne 1) { throw "stacy doctor returned $LASTEXITCODE, expected 1" }
+          if (-not (Select-String -Quiet -Path doctor.json -Pattern 'Stata binary not found')) {
+            throw "stacy doctor did not report missing Stata"
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -117,7 +220,7 @@ jobs:
 
   release:
     name: Create Release
-    needs: build
+    needs: [build, test-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
