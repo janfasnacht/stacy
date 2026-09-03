@@ -206,8 +206,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "stacy --version failed" }
           & packaged/stacy.exe explain 199
           if ($LASTEXITCODE -ne 0) { throw "stacy explain failed" }
-          & packaged/stacy.exe doctor --format json | Out-File doctor.json
-          if ($LASTEXITCODE -ne 1) { throw "stacy doctor returned $LASTEXITCODE, expected 1" }
+          $doctor = Start-Process -FilePath packaged/stacy.exe `
+            -ArgumentList "doctor", "--format", "json" `
+            -RedirectStandardOutput doctor.json -Wait -PassThru -NoNewWindow
+          if ($doctor.ExitCode -ne 1) { throw "stacy doctor returned $($doctor.ExitCode), expected 1" }
           if (-not (Select-String -Quiet -Path doctor.json -Pattern 'Stata binary not found')) {
             throw "stacy doctor did not report missing Stata"
           }
