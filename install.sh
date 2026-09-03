@@ -40,6 +40,10 @@ detect_platform() {
         *)             error "Unsupported architecture: $(uname -m)" ;;
     esac
 
+    if [ "$os" = "unknown-linux-gnu" ] && [ "$arch" = "aarch64" ]; then
+        error "Prebuilt binaries are not available for Linux aarch64. Build from source instead."
+    fi
+
     echo "${arch}-${os}"
 }
 

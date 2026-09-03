@@ -1,6 +1,6 @@
 # Installation
 
-stacy is a single static binary with no runtime dependencies.
+stacy is distributed as a single binary for supported platforms.
 
 ## Quick Install
 
@@ -40,6 +40,11 @@ cargo install --git https://github.com/janfasnacht/stacy.git
 ```
 
 **Manual download:** Get binaries from the [releases page](https://github.com/janfasnacht/stacy/releases).
+
+### GNU/Linux compatibility
+
+The prebuilt GNU/Linux binary supports x86-64 systems with glibc 2.28 or newer,
+including Debian 10 and later. On Linux aarch64, install from source with Cargo.
 
 ## Verify Installation
 
